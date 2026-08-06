@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://tools.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212"
+    android:fitsSystemWindows="true">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        style="@style/Widget.MaterialComponents.Toolbar.Primary"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="#1A1A1A"
+        app:titleTextColor="@android:color/white"
+        app:layout_constraintTop_toTopOf="parent"/>
+
+    <LinearLayout
+        android:id="@+id/llSincroControls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="16dp"
+        android:paddingTop="8dp"
+        android:paddingRight="16dp"
+        android:paddingBottom="12dp"
+        android:background="#1A1A1A"
+        app:layout_constraintTop_toBottomOf="@id/toolbar">
+
+        <TextView
+            android:id="@+id/tvCurrentTime"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="[00:00.00]"
+            android:gravity="center"
+            android:textAppearance="@style/TextAppearance.MaterialComponents.Headline6"
+            android:textColor="@android:color/white"
+            android:textStyle="bold" />
+
+        <!-- FILA 1: Navegación de Cursor (Home, Left, Up, Down, Right, End) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btnHome"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:background="#2D2D2D"
+                android:clickable="true"
+                android:focusable="false"
+                android:gravity="center"
+                android:text="Home"
+                android:textColor="@android:color/white"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnLeft"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:background="#2D2D2D"
+                android:clickable="true"
+                android:focusable="false"
+                android:gravity="center"
+                android:text="←"
+                android:textColor="@android:color/white"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnUp"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:background="#2D2D2D"
+                android:clickable="true"
+                android:focusable="false"
+                android:gravity="center"
+                android:text="↑"
+                android:textColor="@android:color/white"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnDown"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:background="#2D2D2D"
+                android:clickable="true"
+                android:focusable="false"
+                android:gravity="center"
+                android:text="↓"
+                android:textColor="@android:color/white"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnRight"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:background="#2D2D2D"
+                android:clickable="true"
+                android:focusable="false"
+                android:gravity="center"
+                android:text="→"
+                android:textColor="@android:color/white"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnEnd"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:background="#2D2D2D"
+                android:clickable="true"
+                android:focusable="false"
+                android:gravity="center"
+                android:text="End"
+                android:textColor="@android:color/white"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- FILA 2: Controles de Sincronización y Media (Video, -5s, Play, MARCAR, +5s, SRT) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnLoadVideo"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:textColor="@android:color/white"
+                android:textSize="12sp"
+                app:backgroundTint="#2D2D2D"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:text="Video" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRew"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:textColor="@android:color/white"
+                android:textSize="12sp"
+                app:backgroundTint="#2D2D2D"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:text="-5s" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPlayPause"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:textColor="@android:color/white"
+                android:textSize="12sp"
+                app:backgroundTint="#2D2D2D"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:text="Play" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnMark"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:textColor="@android:color/white"
+                android:textSize="12sp"
+                app:backgroundTint="#0066FF"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:text="MARCAR"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFwd"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:textColor="@android:color/white"
+                android:textSize="12sp"
+                app:backgroundTint="#2D2D2D"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:text="+5s" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSrt"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                android:layout_width="0dp"
+                android:layout_height="41dp"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:textColor="@android:color/white"
+                android:textSize="12sp"
+                app:backgroundTint="#2D2D2D"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:text="SRT" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/videoContainer"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:background="#000000"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/llSincroControls">
+
+        <VideoView
+            android:id="@+id/videoView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center" />
+    </FrameLayout>
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guidelineLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.55" />
+
+    <code.name.monkey.retromusic.lyrics.LrcView
+        android:id="@+id/lyricsView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:background="#1F000000"
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp"
+        android:visibility="visible"
+        app:layout_constraintTop_toBottomOf="@id/llSincroControls"
+        app:layout_constraintBottom_toTopOf="@id/guidelineLayout" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toBottomOf="@id/guidelineLayout"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingLeft="16dp"
+                android:paddingTop="12dp"
+                android:paddingRight="16dp"
+                android:paddingBottom="70dp">
+
+                <EditText
+                    android:id="@+id/etLyrics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="top|start"
+                    android:inputType="textMultiLine|textNoSuggestions"
+                    android:background="@android:color/transparent"
+                    android:textColor="@android:color/white"
+                    android:scrollbars="vertical"
+                    android:padding="0dp"
+                    android:textAppearance="@style/TextAppearance.MaterialComponents.Body1"
+                    android:visibility="visible"
+                    tools:ignore="SpeakableTextPresentCheck" />
+
+                <TextView
+                    android:id="@+id/normalLyrics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingMultiplier="1.2"
+                    android:textColor="@android:color/white"
+                    android:padding="0dp"
+                    android:textAppearance="@style/TextAppearance.MaterialComponents.Body1"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/noLyricsFound"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="@string/no_lyrics_found"
+                    android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/saveFab"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="16dp"
+            app:srcCompat="@drawable/ic_save"
+            app:backgroundTint="#2D2D2D"
+            android:tint="@android:color/white"
+            tools:ignore="SpeakableTextPresentCheck" />
+    </FrameLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

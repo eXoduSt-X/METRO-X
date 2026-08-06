@@ -1,0 +1,39 @@
+# --- Archivos de construcción y binarios generados ---
+# (Mantiene tu configuración original)
+*.apk
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+local.properties
+Thumbs.db
+.DS_Store
+.classpath
+.project
+*.iml
+.idea
+.gradle
+build/
+obj/
+captures/
+app/normal/release/
+/models/
+/app/release/
+
+# --- MODIFICACIÓN: Gestión de librerías y binarios nativos ---
+# Ignora todos los archivos AAR y SO para evitar subirlos al repo
+*.aar
+*.so
+
+# Pero permitimos específicamente el directorio libs para que el sistema 
+# de descarga pueda crear la carpeta necesaria durante el build
+!app/libs/
+app/libs/*
+# Y volvemos a ignorar el contenido dentro de libs para que Git no lo rastree
+!app/libs/.gitkeep
+
+# --- Seguridad adicional ---
+# Evita subir carpetas de caché de descarga
+.gradle/
+.navigation/

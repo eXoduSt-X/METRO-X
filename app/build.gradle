@@ -1,0 +1,173 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply plugin: "androidx.navigation.safeargs.kotlin"
+apply plugin: 'kotlin-parcelize'
+apply plugin: 'com.google.devtools.ksp'
+
+android {
+    compileSdk 33
+    namespace "code.name.monkey.retromusic"
+
+    defaultConfig {
+        minSdk 24
+        targetSdk 33
+        vectorDrawables.useSupportLibrary = true
+        applicationId 'code.name.monkey.metrox'
+        versionCode 10603
+        versionName '6.1.0'
+        multiDexEnabled true
+    }
+
+    buildTypes {
+        release {
+            shrinkResources true
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            // No suffixes for consistency
+        }
+    }
+
+    buildFeatures {
+        viewBinding true
+        buildConfig true
+    }
+
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/LICENSE', 'META-INF/NOTICE', 'META-INF/java.properties']
+        }
+        // Configuración indispensable para asegurar que Android 15 use tus binarios nativos de 16KB sin compresión
+        jniLibs {
+            useLegacyPackaging = false
+        }
+        pickFirst 'lib/arm64-v8a/*.so'
+        pickFirst 'lib/x86_64/*.so'
+        pickFirst 'lib/armeabi-v7a/*.so'
+        pickFirst 'lib/x86/*.so'
+    }
+
+    lint {
+        abortOnError true
+        warning 'ImpliedQuantity', 'Instantiatable', 'MissingQuantity', 'MissingTranslation'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+
+    configurations.configureEach {
+        resolutionStrategy {
+            force 'com.google.code.findbugs:jsr305:1.3.9'
+        }
+    }
+}
+
+dependencies {
+    // 1. Vinculación estricta en modo CompileOnly: Evita por completo que D8 procese el classes.jar corrupto
+    compileOnly files('libs/ffmpeg-kit-16kb-full.aar')
+
+    // 2. Cargador simplificado corregido y compatible con Configuration Cache
+    implementation fileTree('libs') {
+        include '*.jar'
+        include '*.aar'
+        exclude '**/ffmpeg-kit-16kb-full.aar'
+    }
+
+    implementation 'com.arthenica:smart-exception-java:0.2.1'
+
+    // --- Dependencias del Sistema y UI ---
+    implementation project(':appthemehelper')
+    implementation "androidx.gridlayout:gridlayout:1.0.0"
+    implementation "androidx.appcompat:appcompat:$appcompat_version"
+    implementation 'androidx.annotation:annotation:1.6.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.recyclerview:recyclerview:1.3.0'
+    implementation "androidx.preference:preference-ktx:$preference_version"
+    implementation "androidx.core:core-ktx:$core_version"
+    implementation 'androidx.palette:palette-ktx:1.0.0'
+    implementation 'androidx.documentfile:documentfile:1.0.1' // Línea corregida
+    implementation 'androidx.mediarouter:mediarouter:1.3.1'
+    implementation "androidx.navigation:navigation-runtime-ktx:$navigation_version"
+    implementation "androidx.navigation:navigation-fragment-ktx:$navigation_version"
+    implementation "androidx.navigation:navigation-ui-ktx:$navigation_version"
+
+    // --- Persistencia de Datos (Room) ---
+    def room_version = '2.5.1'
+    implementation "androidx.room:room-runtime:$room_version"
+    implementation "androidx.room:room-ktx:$room_version"
+    ksp "androidx.room:room-compiler:$room_version"
+
+    // --- Ciclo de Vida y Material Design ---
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycle_version"
+    implementation "androidx.lifecycle:lifecycle-livedata-ktx:$lifecycle_version"
+    implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycle_version"
+    implementation "androidx.core:core-splashscreen:1.0.0"
+    implementation "com.google.android.material:material:$mdc_version"
+
+    // --- Red y API (Retrofit) ---
+    def retrofit_version = '2.9.0'
+    implementation "com.squareup.retrofit2:retrofit:$retrofit_version"
+    implementation "com.squareup.retrofit2:converter-gson:$retrofit_version"
+
+    // --- Diálogos e Interfaz Extendida ---
+    def material_dialog_version = "3.3.0"
+    implementation "com.afollestad.material-dialogs:core:$material_dialog_version"
+    implementation "com.afollestad.material-dialogs:input:$material_dialog_version"
+    implementation "com.afollestad.material-dialogs:color:$material_dialog_version"
+    implementation 'com.afollestad:material-cab:2.0.1'
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
+
+    // --- Inyección de Dependencias (Koin) ---
+    def koin_version = '3.4.0'
+    implementation "io.insert-koin:koin-core:$koin_version"
+    implementation "io.insert-koin:koin-android:$koin_version"
+
+    // --- Carga de Imágenes (Glide) ---
+    def glide_version = '4.15.1'
+    implementation "com.github.bumptech.glide:glide:$glide_version"
+    ksp "com.github.bumptech.glide:ksp:$glide_version"
+
+    // --- Librerías de Terceros Especializadas ---
+    implementation 'com.h6ah4i.android.widget.advrecyclerview:advrecyclerview:1.0.0'
+    implementation 'com.github.bosphere.android-fadingedgelayout:fadingedgelayout:1.0.0'
+    implementation 'net.yslibrary.keyboardvisibilityevent:keyboardvisibilityevent:3.0.0-RC3'
+    implementation 'com.github.jetradarmobile:android-snowfall:1.2.1'
+    implementation "dev.chrisbanes.insetter:insetter:0.6.1"
+    implementation 'com.github.Adonai:jaudiotagger:2.3.15'
+    implementation 'com.r0adkll:slidableactivity:2.1.0'
+    implementation 'com.heinrichreimersoftware:material-intro:2.0.0'
+    implementation 'com.github.dhaval2404:imagepicker:2.1'
+    implementation 'me.zhanghai.android.fastscroll:library:1.2.0'
+    implementation 'cat.ereza:customactivityoncrash:2.4.0'
+    implementation 'me.tankery.lib:circularSeekBar:1.4.2'
+}
+
+// Automatización para extraer los binarios de 16KB del AAR e inyectarlos directamente en el APK final sin pasar por D8
+android.applicationVariants.configureEach { variant ->
+    variant.outputs.configureEach {
+        def unzipTask = tasks.register("unzipFFmpegKit${variant.name.capitalize()}", Copy) {
+            from zipTree(file('libs/ffmpeg-kit-16kb-full.aar'))
+            into file("${buildDir}/intermediates/merged_native_libs/${variant.name}/out/lib")
+            include "jni/**/*.so"
+            eachFile { path = path.replaceFirst("jni/", "") }
+            includeEmptyDirs = false
+        }
+        tasks.named("merge${variant.name.capitalize()}NativeLibs").configure {
+            dependsOn unzipTask
+        }
+    }
+}
+
+// Invalidation Cache Trigger - Soporte Nativo Offline 16KB

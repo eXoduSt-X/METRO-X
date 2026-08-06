@@ -1,0 +1,24 @@
+// https://gradle.com
+plugins {
+    id "com.gradle.enterprise" version "3.10.3"
+}
+
+gradleEnterprise {
+    buildScan {
+        termsOfServiceUrl = "https://gradle.com"
+        termsOfServiceAgree = "yes"
+    }
+}
+
+dependencyResolutionManagement {
+    // Permite que las dependencias busquen de manera global en todos los repositorios declarados aquí
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url "https://jitpack.io" }
+    }
+}
+
+rootProject.name = "METROX"
+include ':app', ':appthemehelper'
