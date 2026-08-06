@@ -26,11 +26,11 @@ app/normal/release/
 *.aar
 *.so
 
-# Pero permitimos específicamente el directorio libs para que el sistema 
-# de descarga pueda crear la carpeta necesaria durante el build
+# Pero permitimos específicamente el directorio libs y el AAR necesario para el build
 !app/libs/
-app/libs/*
-# Y volvemos a ignorar el contenido dentro de libs para que Git no lo rastree
+!app/libs/ffmpeg-kit-16kb-full.aar
+# app/libs/*  <-- Comentado para evitar ignorar archivos permitidos
+# Y volvemos a ignorar el contenido dentro de libs excepto los permitidos
 !app/libs/.gitkeep
 
 # --- Seguridad adicional ---
