@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -12,6 +13,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.content.pm.PackageInfoCompat
+import androidx.core.graphics.toColorInt
 import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.FragmentActivity
 import code.name.monkey.appthemehelper.util.ATHUtil.isWindowBackgroundDark
@@ -57,11 +59,11 @@ class WhatsNewFragment : BottomSheetDialogFragment() {
             val isDark = isWindowBackgroundDark(requireContext())
             val accentColor = accentColor()
             binding.webView.setBackgroundColor(0)
-            val contentColor = colorToCSS(Color.parseColor(if (isDark) "#ffffff" else "#000000"))
-            val textColor = colorToCSS(Color.parseColor(if (isDark) "#60FFFFFF" else "#80000000"))
+            val contentColor = colorToCSS((if (isDark) "#ffffff" else "#000000").toColorInt())
+            val textColor = colorToCSS((if (isDark) "#60FFFFFF" else "#80000000").toColorInt())
             val accentColorString = colorToCSS(accentColor())
             val cardBackgroundColor =
-                colorToCSS(Color.parseColor(if (isDark) "#353535" else "#ffffff"))
+                colorToCSS((if (isDark) "#353535" else "#ffffff").toColorInt())
             val accentTextColor = colorToCSS(
                 getPrimaryTextColor(
                     requireContext(), isColorLight(accentColor)
@@ -133,7 +135,14 @@ class WhatsNewFragment : BottomSheetDialogFragment() {
 
         private fun setChangelogRead(context: Context) {
             try {
-                val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                val pInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    context.packageManager.getPackageInfo(
+                        context.packageName,
+                        PackageManager.PackageInfoFlags.of(0)
+                    )
+                } else {
+                    context.packageManager.getPackageInfo(context.packageName, 0)
+                }
                 val currentVersion = PackageInfoCompat.getLongVersionCode(pInfo)
                 lastVersion = currentVersion
             } catch (e: PackageManager.NameNotFoundException) {
@@ -142,7 +151,14 @@ class WhatsNewFragment : BottomSheetDialogFragment() {
         }
 
         fun showChangeLog(activity: FragmentActivity) {
-            val pInfo = activity.packageManager.getPackageInfo(activity.packageName, 0)
+            val pInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                activity.packageManager.getPackageInfo(
+                    activity.packageName,
+                    PackageManager.PackageInfoFlags.of(0)
+                )
+            } else {
+                activity.packageManager.getPackageInfo(activity.packageName, 0)
+            }
             val currentVersion = PackageInfoCompat.getLongVersionCode(pInfo)
             if (currentVersion > lastVersion && !BuildConfig.DEBUG) {
                 val changelogBottomSheet = WhatsNewFragment()
