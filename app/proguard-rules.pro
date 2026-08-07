@@ -72,6 +72,13 @@
 # Evita que el compilador analice y rompa el bytecode de las clases de FFmpegKit
 -keep class com.arthenica.ffmpegkit.** { *; }
 -dontwarn com.arthenica.ffmpegkit.**
+
+# youtubedl-android
+-keep class com.yausername.youtubedl_android.** { *; }
+-dontwarn com.yausername.youtubedl_android.**
+-keep class com.yausername.ffmpeg_android.** { *; }
+-dontwarn com.yausername.ffmpeg_android.**
+
 -keepattributes MethodParameters,Signature,InnerClasses,EnclosingMethod
 -dontwarn java.beans.ConstructorProperties
 -dontwarn java.beans.Transient
