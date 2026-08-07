@@ -370,6 +370,7 @@ abstract class AbsPlayerFragment(@LayoutRes layout: Int) : AbsMusicServiceFragme
     }
 
     private fun setupBottomControls(view: View) {
+        view.findViewById<View>(R.id.playerBottomButtons)?.drawAboveSystemBars()
         val hasCustomButtons = view.findViewById<View>(R.id.action_menu_button) != null
         if (hasCustomButtons) {
             playerToolbar()?.let {

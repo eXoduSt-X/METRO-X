@@ -20,7 +20,6 @@ import androidx.appcompat.widget.Toolbar
 import code.name.monkey.appthemehelper.util.ATHUtil
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
 import code.name.monkey.retromusic.R
-import code.name.monkey.retromusic.databinding.FragmentMd3PlayerBinding
 import code.name.monkey.retromusic.extensions.drawAboveSystemBars
 import code.name.monkey.retromusic.fragments.base.AbsPlayerFragment
 import code.name.monkey.retromusic.fragments.player.PlayerAlbumCoverFragment
@@ -36,9 +35,6 @@ class MD3PlayerFragment : AbsPlayerFragment(R.layout.fragment_md3_player) {
 
     private lateinit var controlsFragment: MD3PlaybackControlsFragment
 
-    private var _binding: FragmentMd3PlayerBinding? = null
-    private val binding get() = _binding!!
-
     override fun onShow() {
         controlsFragment.show()
     }
@@ -52,7 +48,9 @@ class MD3PlayerFragment : AbsPlayerFragment(R.layout.fragment_md3_player) {
     }
 
     override fun onColorChanged(color: MediaNotificationProcessor) {
-        controlsFragment.setColor(color)
+        if (::controlsFragment.isInitialized) {
+            controlsFragment.setColor(color)
+        }
         lastColor = color.backgroundColor
         libraryViewModel.updateColor(color.backgroundColor)
 
@@ -60,7 +58,7 @@ class MD3PlayerFragment : AbsPlayerFragment(R.layout.fragment_md3_player) {
             ToolbarContentTintHelper.colorizeToolbar(
                 it,
                 ATHUtil.resolveColor(requireContext(), androidx.appcompat.R.attr.colorControlNormal),
-                requireActivity()
+                requireActivity(),
             )
         }
     }
@@ -77,7 +75,6 @@ class MD3PlayerFragment : AbsPlayerFragment(R.layout.fragment_md3_player) {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        _binding = FragmentMd3PlayerBinding.bind(view)
         super.onViewCreated(view, savedInstanceState)
         setUpSubFragments()
         setUpPlayerToolbar()
@@ -86,7 +83,6 @@ class MD3PlayerFragment : AbsPlayerFragment(R.layout.fragment_md3_player) {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        _binding = null
     }
 
     private fun setUpSubFragments() {
@@ -107,7 +103,7 @@ class MD3PlayerFragment : AbsPlayerFragment(R.layout.fragment_md3_player) {
             ToolbarContentTintHelper.colorizeToolbar(
                 this,
                 ATHUtil.resolveColor(requireContext(), androidx.appcompat.R.attr.colorControlNormal),
-                requireActivity()
+                requireActivity(),
             )
         }
     }

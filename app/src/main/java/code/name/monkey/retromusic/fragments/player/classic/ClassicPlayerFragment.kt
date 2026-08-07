@@ -91,7 +91,7 @@ class ClassicPlayerFragment : AbsPlayerFragment(R.layout.fragment_classic_player
                 binding.playerQueueSheet.contentPaddingLeft,
                 (slideOffset * binding.statusBar.height).toInt(),
                 binding.playerQueueSheet.contentPaddingRight,
-                binding.playerQueueSheet.contentPaddingBottom
+                binding.playerQueueSheet.contentPaddingBottom,
             )
 
             shapeDrawable.interpolation = 1 - slideOffset
@@ -100,7 +100,8 @@ class ClassicPlayerFragment : AbsPlayerFragment(R.layout.fragment_classic_player
         override fun onStateChanged(bottomSheet: View, newState: Int) {
             when (newState) {
                 BottomSheetBehavior.STATE_EXPANDED,
-                BottomSheetBehavior.STATE_DRAGGING -> {
+                BottomSheetBehavior.STATE_DRAGGING,
+                -> {
                     mainActivity.getBottomSheetBehavior().isDraggable = false
                 }
 
@@ -283,6 +284,8 @@ class ClassicPlayerFragment : AbsPlayerFragment(R.layout.fragment_classic_player
         lastPlaybackControlsColor = color.primaryTextColor
         lastDisabledPlaybackControlsColor = ColorUtil.withAlpha(color.primaryTextColor, 0.3f)
 
+        if (_binding == null) return
+
         binding.playerContainer.setBackgroundColor(color.backgroundColor)
         binding.playerControlsContainer.songInfo.setTextColor(color.primaryTextColor)
         binding.playerQueueSubHeader.setTextColor(color.primaryTextColor)
@@ -293,7 +296,7 @@ class ClassicPlayerFragment : AbsPlayerFragment(R.layout.fragment_classic_player
         ViewUtil.setProgressDrawable(
             binding.playerControlsContainer.progressSlider,
             color.primaryTextColor,
-            true
+            thumbTint = true
         )
         volumeFragment?.setTintableColor(color.primaryTextColor)
 

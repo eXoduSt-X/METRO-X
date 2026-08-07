@@ -59,7 +59,7 @@ class PlayerFragment : AbsPlayerFragment(R.layout.fragment_player),
         valueAnimator = ValueAnimator.ofObject(
             ArgbEvaluator(),
             surfaceColor(),
-            i
+            i,
         )
         valueAnimator?.addUpdateListener { animation ->
             if (isAdded) {
@@ -87,7 +87,9 @@ class PlayerFragment : AbsPlayerFragment(R.layout.fragment_player),
     override fun toolbarIconColor() = colorControlNormal()
 
     override fun onColorChanged(color: MediaNotificationProcessor) {
-        controlsFragment.setColor(color)
+        if (::controlsFragment.isInitialized) {
+            controlsFragment.setColor(color)
+        }
         lastColor = color.backgroundColor
         libraryViewModel.updateColor(color.backgroundColor)
 
