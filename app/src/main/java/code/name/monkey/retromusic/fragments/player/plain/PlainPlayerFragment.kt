@@ -74,8 +74,8 @@ class PlainPlayerFragment : AbsPlayerFragment(R.layout.fragment_plain_player) {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentPlainPlayerBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         setUpSubFragments()
         setUpPlayerToolbar()
         binding.title.isSelected = true

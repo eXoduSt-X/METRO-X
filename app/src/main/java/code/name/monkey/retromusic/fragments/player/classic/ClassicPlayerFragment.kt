@@ -124,8 +124,8 @@ class ClassicPlayerFragment : AbsPlayerFragment(R.layout.fragment_classic_player
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentClassicPlayerBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         setupPanel()
         setUpMusicControllers()
         setUpPlayerToolbar()

@@ -30,7 +30,6 @@ import code.name.monkey.appthemehelper.util.VersionUtils
 import code.name.monkey.retromusic.extensions.*
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.databinding.FragmentTinyPlayerBinding
-import code.name.monkey.retromusic.extensions.*
 import code.name.monkey.retromusic.fragments.base.AbsPlayerFragment
 import code.name.monkey.retromusic.fragments.base.goToAlbum
 import code.name.monkey.retromusic.fragments.base.goToArtist
@@ -86,7 +85,7 @@ class TinyPlayerFragment : AbsPlayerFragment(R.layout.fragment_tiny_player),
             ToolbarContentTintHelper.colorizeToolbar(
                 binding.playerToolbar,
                 color.secondaryTextColor,
-                requireActivity()
+                requireActivity(),
             )
         }
     }
@@ -129,8 +128,8 @@ class TinyPlayerFragment : AbsPlayerFragment(R.layout.fragment_tiny_player),
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentTinyPlayerBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         binding.title.isSelected = true
         binding.progressBar.setOnClickListener(PlayPauseButtonOnClickHandler())
         binding.progressBar.setOnTouchListener(ProgressHelper(requireContext()))
@@ -195,7 +194,7 @@ class TinyPlayerFragment : AbsPlayerFragment(R.layout.fragment_tiny_player),
         }
         binding.playerSongTotalTime.text = String.format(
             "%s/%s", MusicUtil.getReadableDurationString(total.toLong()),
-            MusicUtil.getReadableDurationString(progress.toLong())
+            MusicUtil.getReadableDurationString(progress.toLong()),
         )
     }
 
@@ -207,8 +206,10 @@ class TinyPlayerFragment : AbsPlayerFragment(R.layout.fragment_tiny_player),
         private var gestureDetector: GestureDetector
 
         init {
-            gestureDetector = GestureDetector(context, object :
-                GestureDetector.SimpleOnGestureListener() {
+            gestureDetector = GestureDetector(
+                context,
+                object :
+                    GestureDetector.SimpleOnGestureListener() {
 
                 override fun onLongPress(e: MotionEvent) {
                     if (abs(e.y - initialY) <= 2) {
@@ -263,8 +264,8 @@ class TinyPlayerFragment : AbsPlayerFragment(R.layout.fragment_tiny_player),
                     if (isDragEnabled) {
                         val diffY = (initialY - event.y).toInt()
                         progress =
-                            initialProgress + diffY * (binding.progressBar.max / displayHeight) // Multiplier
-                        if (progress > 0 && progress < binding.progressBar.max) {
+                            initialProgress + (diffY * (binding.progressBar.max / displayHeight)) // Multiplier
+                        if ((progress > 0) && (progress < binding.progressBar.max)) {
                             onUpdateProgressViews(
                                 progress,
                                 MusicPlayerRemote.songDurationMillis

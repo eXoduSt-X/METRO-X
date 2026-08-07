@@ -39,8 +39,8 @@ class AdaptiveFragment : AbsPlayerFragment(R.layout.fragment_adaptive_player) {
     private lateinit var playbackControlsFragment: AdaptivePlaybackControlsFragment
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentAdaptivePlayerBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         setUpSubFragments()
         setUpPlayerToolbar()
         binding.playbackControlsFragment.drawAboveSystemBars()

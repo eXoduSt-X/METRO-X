@@ -74,8 +74,8 @@ class CardFragment : AbsPlayerFragment(R.layout.fragment_card_player) {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentCardPlayerBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         setUpSubFragments()
         setUpPlayerToolbar()
         (binding.playbackControlsFragment.parent as View).drawAboveSystemBars()

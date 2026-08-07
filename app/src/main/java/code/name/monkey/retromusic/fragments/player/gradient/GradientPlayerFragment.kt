@@ -35,7 +35,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.appthemehelper.util.ColorUtil
 import code.name.monkey.appthemehelper.util.VersionUtils
-import code.name.monkey.retromusic.extensions.*
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.song.PlayingQueueAdapter
 import code.name.monkey.retromusic.databinding.FragmentGradientPlayerBinding
@@ -88,10 +87,10 @@ class GradientPlayerFragment : AbsPlayerFragment(R.layout.fragment_gradient_play
         override fun onSlide(bottomSheet: View, slideOffset: Float) {
             mainActivity.getBottomSheetBehavior().isDraggable = false
             binding.playerQueueSheet.updatePadding(
-                top = (slideOffset * binding.statusBarLayout.statusBar.height).toInt()
+                top = (slideOffset * binding.statusBarLayout.statusBar.height).toInt(),
             )
             binding.container.updatePadding(
-                bottom = ((1 - slideOffset) * navBarHeight).toInt()
+                bottom = ((1 - slideOffset) * navBarHeight).toInt(),
             )
         }
 
@@ -157,8 +156,8 @@ class GradientPlayerFragment : AbsPlayerFragment(R.layout.fragment_gradient_play
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentGradientPlayerBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         hideVolumeIfAvailable()
         setUpMusicControllers()
         setupPanel()
@@ -296,11 +295,7 @@ class GradientPlayerFragment : AbsPlayerFragment(R.layout.fragment_gradient_play
                 }
                 binding.playbackControlsFragment.songFavourite.apply {
                     setImageResource(icon)
-                    drawable.also {
-                        if (it is AnimatedVectorDrawable) {
-                            it.start()
-                        }
-                    }
+                    (drawable as? AnimatedVectorDrawable)?.start()
                 }
             }
         }
@@ -397,11 +392,14 @@ class GradientPlayerFragment : AbsPlayerFragment(R.layout.fragment_gradient_play
         binding.playbackControlsFragment.nextButton.setOnTouchListener(
             MusicSeekSkipTouchListener(
                 requireActivity(),
-                true
+                next = true,
             )
         )
         binding.playbackControlsFragment.previousButton.setOnTouchListener(
-            MusicSeekSkipTouchListener(requireActivity(), false)
+            MusicSeekSkipTouchListener(
+                requireActivity(),
+                next = false,
+            )
         )
     }
 
@@ -561,15 +559,16 @@ class GradientPlayerFragment : AbsPlayerFragment(R.layout.fragment_gradient_play
 
     private fun setUpProgressSlider() {
         val progressSlider = binding.playbackControlsFragment.progressSlider
-        progressSlider.addOnChangeListener(Slider.OnChangeListener { _, value, fromUser ->
+        progressSlider.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
                 onUpdateProgressViews(
                     value.toInt(),
                     MusicPlayerRemote.songDurationMillis
                 )
             }
-        })
-        progressSlider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
+        }
+        progressSlider.addOnSliderTouchListener(
+            object : Slider.OnSliderTouchListener {
             override fun onStartTrackingTouch(slider: Slider) {
                 progressViewUpdateHelper.stop()
             }

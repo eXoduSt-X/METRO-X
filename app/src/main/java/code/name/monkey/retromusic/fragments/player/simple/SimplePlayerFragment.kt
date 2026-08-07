@@ -49,8 +49,8 @@ class SimplePlayerFragment : AbsPlayerFragment(R.layout.fragment_simple_player) 
     private lateinit var controlsFragment: SimplePlaybackControlsFragment
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentSimplePlayerBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         setUpSubFragments()
         setUpPlayerToolbar()
         playerToolbar().drawAboveSystemBars()

@@ -18,7 +18,6 @@ import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.graphics.PorterDuff
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.media.AudioManager
 import android.os.Bundle
@@ -27,6 +26,7 @@ import android.view.animation.Animation
 import android.view.animation.LinearInterpolator
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.getSystemService
+import androidx.core.graphics.drawable.toDrawable
 import code.name.monkey.appthemehelper.util.ColorUtil
 import code.name.monkey.appthemehelper.util.MaterialValueHelper
 import code.name.monkey.appthemehelper.util.TintHelper
@@ -83,8 +83,8 @@ class CirclePlayerFragment : AbsPlayerFragment(R.layout.fragment_circle_player),
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentCirclePlayerBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
 
         setupViews()
         binding.title.isSelected = true
@@ -105,7 +105,7 @@ class CirclePlayerFragment : AbsPlayerFragment(R.layout.fragment_circle_player),
             ToolbarContentTintHelper.colorizeToolbar(
                 this,
                 colorControlNormal(),
-                requireActivity()
+                requireActivity(),
             )
         }
     }
@@ -117,23 +117,26 @@ class CirclePlayerFragment : AbsPlayerFragment(R.layout.fragment_circle_player),
         setUpPlayPauseFab()
         setUpPrevNext()
         setUpPlayerToolbar()
-        binding.albumCoverOverlay.background = ColorDrawable(
-            MaterialValueHelper.getPrimaryTextColor(
-                requireContext(),
-                accentColor().isColorLight
-            )
-        )
+        binding.albumCoverOverlay.background = MaterialValueHelper.getPrimaryTextColor(
+            requireContext(),
+            accentColor().isColorLight,
+        ).toDrawable()
     }
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setUpPrevNext() {
         updatePrevNextColor()
-        binding.nextButton.setOnTouchListener(MusicSeekSkipTouchListener(requireActivity(), true))
+        binding.nextButton.setOnTouchListener(
+            MusicSeekSkipTouchListener(
+                requireActivity(),
+                next = true,
+            )
+        )
         binding.previousButton.setOnTouchListener(
             MusicSeekSkipTouchListener(
                 requireActivity(),
-                false
-            )
+                next = false,
+            ),
         )
     }
 
@@ -147,7 +150,7 @@ class CirclePlayerFragment : AbsPlayerFragment(R.layout.fragment_circle_player),
         TintHelper.setTintAuto(
             binding.playPauseButton,
             accentColor(),
-            false
+            false,
         )
         binding.playPauseButton.setOnClickListener(PlayPauseButtonOnClickHandler())
     }
@@ -290,15 +293,16 @@ class CirclePlayerFragment : AbsPlayerFragment(R.layout.fragment_circle_player),
     private fun setUpProgressSlider() {
         binding.progressSlider.applyColor(accentColor())
         val progressSlider = binding.progressSlider
-        progressSlider.addOnChangeListener(Slider.OnChangeListener { _, value, fromUser ->
+        progressSlider.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
                 onUpdateProgressViews(
                     value.toInt(),
                     MusicPlayerRemote.songDurationMillis
                 )
             }
-        })
-        progressSlider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
+        }
+        progressSlider.addOnSliderTouchListener(
+            object : Slider.OnSliderTouchListener {
             override fun onStartTrackingTouch(slider: Slider) {
                 isSeeking = true
                 progressViewUpdateHelper.stop()

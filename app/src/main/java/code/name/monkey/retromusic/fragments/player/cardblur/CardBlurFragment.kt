@@ -90,8 +90,8 @@ class CardBlurFragment : AbsPlayerFragment(R.layout.fragment_card_blur_player),
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentCardBlurPlayerBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         setUpSubFragments()
         setUpPlayerToolbar()
         binding.playerToolbar.drawAboveSystemBars()

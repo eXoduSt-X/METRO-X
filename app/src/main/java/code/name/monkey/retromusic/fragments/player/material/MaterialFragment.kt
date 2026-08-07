@@ -122,8 +122,8 @@ class MaterialFragment : AbsPlayerFragment(R.layout.fragment_material) {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentMaterialBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         setUpSubFragments()
         setUpPlayerToolbar()
         playerToolbar().drawAboveSystemBars()

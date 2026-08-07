@@ -102,8 +102,8 @@ class ColorFragment : AbsPlayerFragment(R.layout.fragment_color_player) {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentColorPlayerBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         setUpSubFragments()
         setUpPlayerToolbar()
         val playerAlbumCoverFragment: PlayerAlbumCoverFragment =

@@ -42,8 +42,8 @@ class PeekPlayerFragment : AbsPlayerFragment(R.layout.fragment_peek_player) {
 
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentPeekPlayerBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         setUpPlayerToolbar()
         setUpSubFragments()
         binding.title.isSelected = true

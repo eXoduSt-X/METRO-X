@@ -16,11 +16,11 @@ package code.name.monkey.retromusic.fragments.player.blur
 
 import android.content.SharedPreferences
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.widget.Toolbar
+import androidx.core.graphics.drawable.toDrawable
 import androidx.preference.PreferenceManager
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
 import code.name.monkey.retromusic.NEW_BLUR_AMOUNT
@@ -60,8 +60,8 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentBlurBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         setUpSubFragments()
         setUpPlayerToolbar()
         binding.playerToolbar.drawAboveSystemBars()
@@ -120,9 +120,9 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             .simpleSongCoverOptions(MusicPlayerRemote.currentSong)
             .transform(
                 BlurTransformation.Builder(requireContext()).blurRadius(blurAmount.toFloat())
-                    .build()
+                    .build(),
             ).thumbnail(lastRequest)
-            .error(Glide.with(this).load(ColorDrawable(Color.DKGRAY)).fitCenter())
+            .error(Glide.with(this).load(Color.DKGRAY.toDrawable()).fitCenter())
             .also {
                 lastRequest = it.clone()
                 it.crossfadeListener()

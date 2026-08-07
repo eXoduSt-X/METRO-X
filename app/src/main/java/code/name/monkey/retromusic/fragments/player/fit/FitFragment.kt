@@ -78,8 +78,8 @@ class FitFragment : AbsPlayerFragment(R.layout.fragment_fit) {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
         _binding = FragmentFitBinding.bind(view)
+        super.onViewCreated(view, savedInstanceState)
         setUpSubFragments()
         setUpPlayerToolbar()
         playerToolbar().drawAboveSystemBars()
