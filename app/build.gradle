@@ -155,7 +155,7 @@ dependencies {
 
     // --- YouTube Downloader (yt-dlp) ---
     implementation 'com.github.yausername.youtubedl-android:library:0.15.0'
-    implementation 'com.github.yausername:ffmpeg-android:0.15.0'
+    implementation 'com.github.yausername.youtubedl-android:ffmpeg:0.15.0'
 }
 
 // Automatización para extraer los binarios de 16KB del AAR e inyectarlos directamente en el APK final sin pasar por D8
