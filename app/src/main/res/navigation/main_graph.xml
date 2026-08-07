@@ -126,4 +126,10 @@
     <fragment
         android:id="@+id/lyrics_fragment"
         android:name="code.name.monkey.retromusic.fragments.lyrics.LyricsFragment" />
+
+    <fragment
+        android:id="@+id/youtube_downloader_fragment"
+        android:name="code.name.monkey.retromusic.fragments.YoutubeDownloaderFragment"
+        android:label="YouTube Downloader"
+        tools:layout="@layout/fragment_youtube_downloader" />
 </navigation>

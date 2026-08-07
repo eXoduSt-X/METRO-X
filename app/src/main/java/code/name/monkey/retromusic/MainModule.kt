@@ -5,6 +5,7 @@ import code.name.monkey.retromusic.auto.AutoMusicProvider
 import code.name.monkey.retromusic.db.MIGRATION_23_24
 import code.name.monkey.retromusic.db.RetroDatabase
 import code.name.monkey.retromusic.fragments.LibraryViewModel
+import code.name.monkey.retromusic.fragments.YoutubeDownloaderViewModel
 import code.name.monkey.retromusic.fragments.albums.AlbumDetailsViewModel
 import code.name.monkey.retromusic.fragments.artists.ArtistDetailsViewModel
 import code.name.monkey.retromusic.fragments.genres.GenreDetailsViewModel
@@ -49,7 +50,7 @@ private val autoModule = module {
             get(),
             get(),
             get(),
-            get()
+            get(),
         )
     }
 }
@@ -102,7 +103,7 @@ private val dataModule = module {
         RealLastAddedRepository(
             get(),
             get(),
-            get()
+            get(),
         )
     } bind LastAddedRepository::class
 
@@ -112,7 +113,7 @@ private val dataModule = module {
             get(),
             get(),
             get(),
-            get()
+            get(),
         )
     }
 }
@@ -150,6 +151,10 @@ private val viewModules = module {
             get(),
             genre
         )
+    }
+
+    viewModel {
+        YoutubeDownloaderViewModel()
     }
 }
 

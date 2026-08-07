@@ -1,6 +1,7 @@
 package code.name.monkey.retromusic
 
 import android.app.Application
+import android.util.Log
 import androidx.preference.PreferenceManager
 import cat.ereza.customactivityoncrash.config.CaocConfig
 import code.name.monkey.appthemehelper.ThemeStore
@@ -9,6 +10,7 @@ import code.name.monkey.retromusic.activities.ErrorActivity
 import code.name.monkey.retromusic.activities.MainActivity
 import code.name.monkey.retromusic.appshortcuts.DynamicShortcutManager
 import code.name.monkey.retromusic.helper.WallpaperAccentManager
+import com.yausername.youtubedl_android.YoutubeDL
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 
@@ -43,6 +45,13 @@ class App : Application() {
 
         // Set Default values for now playing preferences
         PreferenceManager.setDefaultValues(this, R.xml.pref_now_playing_screen, false)
+
+        try {
+            YoutubeDL.getInstance().init(this)
+            // FFmpeg.getInstance().init(this)
+        } catch (e: Exception) {
+            Log.e("YoutubeDL", "Error inicializando binarios", e)
+        }
     }
 
     override fun onTerminate() {
