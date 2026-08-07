@@ -73,3 +73,5 @@
 -keep class com.arthenica.ffmpegkit.** { *; }
 -dontwarn com.arthenica.ffmpegkit.**
 -keepattributes MethodParameters,Signature,InnerClasses,EnclosingMethod
+-dontwarn java.beans.ConstructorProperties
+-dontwarn java.beans.Transient
