@@ -24,7 +24,7 @@ class YoutubeDownloaderFragment : Fragment(R.layout.fragment_youtube_downloader)
 
         binding.statusText.movementMethod = ScrollingMovementMethod()
 
-        binding.urlInputLayout.setEndIconOnClickListener {
+        binding.urlInputLayout.setStartIconOnClickListener {
             val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = clipboard.primaryClip
             if ((clip != null) && (clip.itemCount > 0)) {
@@ -66,18 +66,22 @@ class YoutubeDownloaderFragment : Fragment(R.layout.fragment_youtube_downloader)
     }
 
     private fun showQualityDialog(info: com.yausername.youtubedl_android.mapper.VideoInfo) {
-        val formats = info.formats?.filter { 
-            // Filtrar formatos que tengan video y una resolución decente
-            it.ext == "mp4" && it.vcodec != "none"
-        }?.sortedByDescending { it.height } ?: emptyList()
+        val formats = info.formats?.filter {
+            // Incluimos todos los que tengan video (vcodec != "none"), incluso si no tienen audio
+            // YouTube suele separar el video de alta calidad del audio
+            it.vcodec != "none" && it.height > 0
+        }?.distinctBy { it.height } // Evitamos duplicados de la misma resolución
+         ?.sortedByDescending { it.height } ?: emptyList()
 
         if (formats.isEmpty()) {
-            viewModel.download(info.url!!, null, true)
+            viewModel.download(info.webpageUrl ?: info.url!!, null, true)
             return
         }
 
-        val qualityOptions = formats.map { 
-            "${it.height}p (${it.ext}) - ${it.formatNote ?: ""}" 
+        val qualityOptions = formats.map {
+            val note = it.formatNote ?: ""
+            val ext = it.ext ?: ""
+            "${it.height}p ($ext) $note".trim()
         }.toTypedArray()
 
         MaterialAlertDialogBuilder(requireContext())

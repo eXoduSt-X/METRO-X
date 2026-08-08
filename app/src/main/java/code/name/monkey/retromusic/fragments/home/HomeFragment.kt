@@ -244,8 +244,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                     outputFile.delete()
                 }
 
-                val command = "-f concat -safe 0 -i ${listaFile.absolutePath} -c copy ${outputFile.absolutePath}"
+                val command = "-f concat -safe 0 -i \"${listaFile.absolutePath}\" -c copy \"${outputFile.absolutePath}\""
                 Log.d("FFmpegMerge", "Comando: $command")
+                requireActivity().runOnUiThread { mostrarProgreso() }
 
                 FFmpegKit.executeAsync(command) { session ->
                     if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
@@ -730,7 +731,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             val outputFile = File(requireContext().cacheDir, "output_addaudio.mp4")
             if (outputFile.exists()) outputFile.delete()
 
-            val command = "-y -i ${videoFile.absolutePath} -i ${audioFile.absolutePath} -map 0:v -map 1:a -c:v copy -c:a aac -shortest ${outputFile.absolutePath}"
+            val command = "-y -i \"${videoFile.absolutePath}\" -i \"${audioFile.absolutePath}\" -map 0:v -map 1:a -c:v copy -c:a aac -shortest \"${outputFile.absolutePath}\""
             Log.d("FFmpegAddAudio", "Comando: $command")
 
             FFmpegKit.executeAsync(command) { session ->
@@ -772,7 +773,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             val filterScriptFile = File(requireContext().cacheDir, "gif_filter.txt")
             filterScriptFile.writeText(filterComplex)
 
-            val command = "-y -i ${videoFile.absolutePath} -filter_complex_script ${filterScriptFile.absolutePath} ${outputFile.absolutePath}"
+            val command = "-y -i \"${videoFile.absolutePath}\" -filter_complex_script \"${filterScriptFile.absolutePath}\" \"${outputFile.absolutePath}\""
             Log.d("FFmpegGif", "Comando: $command")
 
             FFmpegKit.executeAsync(command) { session ->
@@ -1018,11 +1019,11 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
             val command = if (audioUri != null) {
                 val audioFile = cacheUriToFile(audioUri, "input_audio.mp3")
-                "-i ${videoFile.absolutePath} -i ${subFile.absolutePath} -i ${audioFile.absolutePath} " +
+                "-y -i \"${videoFile.absolutePath}\" -i \"${subFile.absolutePath}\" -i \"${audioFile.absolutePath}\" " +
                         "-map 0:v -map 2:a -map 1:s " +
-                        "-c copy -c:s srt -disposition:a:0 default -disposition:s:0 default ${outputFile.absolutePath}"
+                        "-c copy -c:s srt -disposition:a:0 default -disposition:s:0 default \"${outputFile.absolutePath}\""
             } else {
-                "-i ${videoFile.absolutePath} -i ${subFile.absolutePath} -c copy -c:s srt -disposition:s:0 default ${outputFile.absolutePath}"
+                "-y -i \"${videoFile.absolutePath}\" -i \"${subFile.absolutePath}\" -c copy -c:s srt -disposition:s:0 default \"${outputFile.absolutePath}\""
             }
 
             FFmpegKit.executeAsync(command) { session ->
@@ -1060,7 +1061,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             return
         }
         Toast.makeText(requireContext(), R.string.incrustando_subtitulos_msg, Toast.LENGTH_LONG).show()
-        mostrarProgreso()
+        requireActivity().runOnUiThread { mostrarProgreso() }
 
         val videoUri = videoPlaylist[currentIndex]
         Thread {
@@ -1099,7 +1100,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             val filterScriptFile = File(requireContext().cacheDir, "drawtext_filter.txt")
             filterScriptFile.writeText(drawtextFilter)
 
-            val command = "-y -i ${videoFile.absolutePath} -filter_script:v ${filterScriptFile.absolutePath} -c:v mpeg4 -q:v 2 -c:a copy ${outputFile.absolutePath}"
+            val command = "-y -i \"${videoFile.absolutePath}\" -filter_script:v \"${filterScriptFile.absolutePath}\" -c:v mpeg4 -q:v 2 -c:a copy \"${outputFile.absolutePath}\""
             Log.d("FFmpegHardcode", "Comando: $command")
 
             FFmpegKit.executeAsync(command) { session ->
@@ -1149,7 +1150,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 val filterScriptFile = File(requireContext().cacheDir, "slideshow_filter.txt")
                 filterScriptFile.writeText(filterComplex.toString())
 
-                val command = "-y $inputArgs-filter_complex_script ${filterScriptFile.absolutePath} -map [outv] -c:v mpeg4 -q:v 3 ${outputFile.absolutePath}"
+                val command = "-y $inputArgs-filter_complex_script \"${filterScriptFile.absolutePath}\" -map [outv] -c:v mpeg4 -q:v 3 \"${outputFile.absolutePath}\""
                 Log.d("FFmpegSlideshow", "Comando: $command")
 
                 FFmpegKit.executeAsync(command) { session ->
@@ -1187,13 +1188,15 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
 
         val destUri = resolver.insert(collectionUri, contentValues)
+        requireActivity().runOnUiThread { mostrarProgreso() }
 
         if (destUri != null) {
             val outputFile = File(requireContext().cacheDir, "output_split.mp4")
 
-            val command = "-i ${videoFile.absolutePath} -ss $startTime -to $endTime -c copy ${outputFile.absolutePath}"
+            val command = "-y -i \"${videoFile.absolutePath}\" -ss $startTime -to $endTime -c copy \"${outputFile.absolutePath}\""
 
             FFmpegKit.executeAsync(command) { session ->
+                requireActivity().runOnUiThread { ocultarProgreso() }
                 if (ReturnCode.isSuccess(session.returnCode)) {
                     try {
                         resolver.openOutputStream(destUri)?.use { outputStream ->
@@ -1301,7 +1304,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 val outputFile = File(requireContext().cacheDir, "output_temp_$index.mp3")
                 if (outputFile.exists()) outputFile.delete()
 
-                val command = "-i ${inputFile.absolutePath} -map_metadata 0 -id3v2_version 3 -c:a libmp3lame -q:a $calidad ${outputFile.absolutePath}"
+                val command = "-y -i \"${inputFile.absolutePath}\" -map_metadata 0 -id3v2_version 3 -c:a libmp3lame -q:a $calidad \"${outputFile.absolutePath}\""
 
                 val session = FFmpegKit.execute(command)
                 if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {

@@ -4,6 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#121212"
     android:padding="16dp">
 
     <com.google.android.material.textfield.TextInputLayout
@@ -11,18 +12,25 @@
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginTop="56dp"
         android:hint="@string/youtube_url_hint"
-        app:endIconMode="custom"
-        app:endIconDrawable="@drawable/ic_edit"
+        android:textColorHint="#AAAAAA"
+        app:boxStrokeColor="#444444"
+        app:endIconMode="clear_text"
+        app:endIconTint="#FFFFFF"
+        app:hintTextColor="#FFFFFF"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        app:startIconDrawable="@drawable/ic_edit"
+        app:startIconTint="#FFFFFF">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/urlEditText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="textUri" />
+            android:inputType="textUri"
+            android:textColor="#FFFFFF" />
     </com.google.android.material.textfield.TextInputLayout>
 
     <LinearLayout
@@ -37,10 +45,11 @@
             android:id="@+id/downloadMp3Button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:layout_marginEnd="8dp"
+            android:layout_weight="1"
             android:text="@string/youtube_download_audio"
-            app:backgroundTint="#4CAF50" />
+            android:textColor="#FFFFFF"
+            app:backgroundTint="#333333" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/downloadVideoButton"
@@ -48,7 +57,8 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="@string/youtube_download_video"
-            app:backgroundTint="#F44336" />
+            android:textColor="#FFFFFF"
+            app:backgroundTint="#333333" />
     </LinearLayout>
 
     <com.google.android.material.progressindicator.LinearProgressIndicator
@@ -57,7 +67,9 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
         android:visibility="gone"
+        app:indicatorColor="#FFFFFF"
         app:layout_constraintTop_toBottomOf="@id/buttonContainer"
+        app:trackColor="#444444"
         tools:visibility="visible" />
 
     <TextView
@@ -67,6 +79,7 @@
         android:layout_marginTop="16dp"
         android:fontFamily="monospace"
         android:scrollbars="vertical"
+        android:textColor="#BBBBBB"
         android:textSize="12sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@id/progressBar"

@@ -26,7 +26,8 @@ object FFmpegKit {
         }
         val session = FFmpegSession()
 
-        val arguments = command.split(" ").toTypedArray()
+        // Mejora: parseo de argumentos respetando comillas para rutas con espacios
+        val arguments = parseArguments(command)
         FFmpegKitConfig.nativeFFmpegExecute(session.sessionId, arguments)
         return session
     }
@@ -41,11 +42,39 @@ object FFmpegKit {
         }
         val session = FFmpegSession()
         Thread {
-            val arguments = command.split(" ").toTypedArray()
-            FFmpegKitConfig.nativeFFmpegExecute(session.sessionId, arguments)
-            callback.apply(session)
+            try {
+                val arguments = parseArguments(command)
+                val resultCode = FFmpegKitConfig.nativeFFmpegExecute(session.sessionId, arguments)
+                Log.d("FFmpegKit", "Ejecución finalizada con código: $resultCode")
+            } catch (e: Exception) {
+                Log.e("FFmpegKit", "Error en hilo de ejecución: ${e.message}")
+            } finally {
+                callback.apply(session)
+            }
         }.start()
         return session
+    }
+
+    private fun parseArguments(command: String): Array<String> {
+        val arguments = mutableListOf<String>()
+        val sb = StringBuilder()
+        var inQuotes = false
+        for (c in command) {
+            if (c == '\"') {
+                inQuotes = !inQuotes
+            } else if (c == ' ' && !inQuotes) {
+                if (sb.isNotEmpty()) {
+                    arguments.add(sb.toString())
+                    sb.setLength(0)
+                }
+            } else {
+                sb.append(c)
+            }
+        }
+        if (sb.isNotEmpty()) {
+            arguments.add(sb.toString())
+        }
+        return arguments.toTypedArray()
     }
 }
 
