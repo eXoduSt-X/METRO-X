@@ -12,7 +12,6 @@ import code.name.monkey.retromusic.appshortcuts.DynamicShortcutManager
 import code.name.monkey.retromusic.helper.WallpaperAccentManager
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
-import com.yausername.youtubedl_android.YoutubeDLException
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 
@@ -49,12 +48,12 @@ class App : Application() {
         PreferenceManager.setDefaultValues(this, R.xml.pref_now_playing_screen, false)
 
         try {
+            Log.d("YoutubeDL", "Iniciando inicialización de YoutubeDL...")
             YoutubeDL.getInstance().init(this)
             FFmpeg.getInstance().init(this)
-        } catch (e: YoutubeDLException) {
-            Log.e("YoutubeDL", "Error inicializando binarios YoutubeDL", e)
-        } catch (e: Exception) {
-            Log.e("YoutubeDL", "Error general en inicialización", e)
+            Log.d("YoutubeDL", "Inicialización exitosa")
+        } catch (e: Throwable) {
+            Log.e("YoutubeDL", "Error crítico en inicialización: ${e.message}", e)
         }
     }
 

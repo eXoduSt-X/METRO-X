@@ -74,10 +74,12 @@
 -dontwarn com.arthenica.ffmpegkit.**
 
 # youtubedl-android
--keep class com.yausername.youtubedl_android.** { *; }
--dontwarn com.yausername.youtubedl_android.**
--keep class com.yausername.ffmpeg_android.** { *; }
--dontwarn com.yausername.ffmpeg_android.**
+-keep class com.yausername.** { *; }
+-dontwarn com.yausername.**
+
+# FFmpegKit
+-keep class com.arthenica.** { *; }
+-dontwarn com.arthenica.**
 
 -keepattributes MethodParameters,Signature,InnerClasses,EnclosingMethod
 -dontwarn java.beans.ConstructorProperties

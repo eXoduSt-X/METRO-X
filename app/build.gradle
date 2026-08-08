@@ -38,9 +38,9 @@ android {
         resources {
             excludes += ['META-INF/LICENSE', 'META-INF/NOTICE', 'META-INF/java.properties']
         }
-        // Configuración indispensable para asegurar que Android 15 use tus binarios nativos de 16KB sin compresión
+        // Forzamos la extracción para que YoutubeDL pueda encontrar y descomprimir libpython.zip.so
         jniLibs {
-            useLegacyPackaging = false
+            useLegacyPackaging = true
         }
         pickFirst 'lib/arm64-v8a/*.so'
         pickFirst 'lib/x86_64/*.so'
@@ -154,8 +154,8 @@ dependencies {
     implementation 'me.tankery.lib:circularSeekBar:1.4.2'
 
     // --- YouTube Downloader (yt-dlp) ---
-    implementation 'com.github.yausername.youtubedl-android:library:0.15.0'
-    implementation 'com.github.yausername.youtubedl-android:ffmpeg:0.15.0'
+    implementation 'io.github.junkfood02.youtubedl-android:library:0.18.1'
+    implementation 'io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1'
 }
 
 // Automatización para extraer los binarios de 16KB del AAR e inyectarlos directamente en el APK final sin pasar por D8

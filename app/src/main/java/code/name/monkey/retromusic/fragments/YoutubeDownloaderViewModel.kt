@@ -1,6 +1,7 @@
 package code.name.monkey.retromusic.fragments
 
 import android.os.Environment
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -28,9 +29,25 @@ class YoutubeDownloaderViewModel : ViewModel() {
     private val _videoInfo = MutableLiveData<VideoInfo?>()
     val videoInfo: LiveData<VideoInfo?> = _videoInfo
 
+    private fun ensureInitialized(): String? {
+        return try {
+            YoutubeDL.getInstance().init(code.name.monkey.retromusic.App.getContext())
+            null
+        } catch (e: Exception) {
+            Log.e("YoutubeDL", "Failed to initialize in ViewModel", e)
+            e.message ?: "Unknown initialization error"
+        }
+    }
+
     fun fetchVideoInfo(url: String) {
         if (url.isBlank()) {
             _status.value = "URL cannot be empty"
+            return
+        }
+
+        val initError = ensureInitialized()
+        if (initError != null) {
+            _status.value = "Init Error: $initError"
             return
         }
 
@@ -39,7 +56,15 @@ class YoutubeDownloaderViewModel : ViewModel() {
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val info = YoutubeDL.getInstance().getInfo(url)
+                val request = YoutubeDLRequest(url)
+                
+                // Opciones críticas para evitar el Error 403 y fallos de n-challenge
+                request.addOption("--no-check-certificate")
+                request.addOption("--no-cache-dir")
+                request.addOption("--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                request.addOption("--extractor-args", "youtube:player-client=android,web;player-skip=web_embedded_player,web_music_player")
+
+                val info = YoutubeDL.getInstance().getInfo(request)
                 withContext(Dispatchers.Main) {
                     _videoInfo.value = info
                     _isDownloading.value = false
@@ -55,6 +80,12 @@ class YoutubeDownloaderViewModel : ViewModel() {
     }
 
     fun download(url: String, formatId: String?, isVideo: Boolean) {
+        val initError = ensureInitialized()
+        if (initError != null) {
+            _status.value = "Init Error: $initError"
+            return
+        }
+
         _isDownloading.value = true
         _status.value = "Starting download..."
         _progress.value = 0
@@ -63,6 +94,11 @@ class YoutubeDownloaderViewModel : ViewModel() {
             try {
                 val request = YoutubeDLRequest(url)
                 
+                request.addOption("--no-check-certificate")
+                request.addOption("--no-cache-dir")
+                request.addOption("--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                request.addOption("--extractor-args", "youtube:player-client=android,web")
+
                 if (isVideo) {
                     if (formatId != null) {
                         // Descarga el formato específico seleccionado + el mejor audio

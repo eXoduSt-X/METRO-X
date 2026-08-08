@@ -7,17 +7,25 @@ fun interface ExecuteCallback {
 }
 
 object FFmpegKit {
+    private var isLoaded = false
+
     init {
         try {
             System.loadLibrary("ffmpegkit")
+            isLoaded = true
         } catch (e: UnsatisfiedLinkError) {
-            Log.e("FFmpegKit", "Error cargando binario nativo", e)
+            Log.e("FFmpegKit", "Error cargando binario nativo: ${e.message}", e)
         }
     }
 
     @JvmStatic
     fun execute(command: String): FFmpegSession {
+        if (!isLoaded) {
+            Log.e("FFmpegKit", "Error: Librería nativa no cargada")
+            return FFmpegSession()
+        }
         val session = FFmpegSession()
+
         val arguments = command.split(" ").toTypedArray()
         FFmpegKitConfig.nativeFFmpegExecute(session.sessionId, arguments)
         return session
@@ -25,6 +33,12 @@ object FFmpegKit {
 
     @JvmStatic
     fun executeAsync(command: String, callback: ExecuteCallback): FFmpegSession {
+        if (!isLoaded) {
+            Log.e("FFmpegKit", "Error: Librería nativa no cargada (Async)")
+            val session = FFmpegSession()
+            callback.apply(session)
+            return session
+        }
         val session = FFmpegSession()
         Thread {
             val arguments = command.split(" ").toTypedArray()
