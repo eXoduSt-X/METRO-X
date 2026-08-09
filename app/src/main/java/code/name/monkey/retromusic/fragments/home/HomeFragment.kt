@@ -669,25 +669,24 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     ): String {
         fun escape(text: String) = text
             .replace("\\", "\\\\")
-            .replace("'", "\u2019")
-            .replace(":", "\\:")
-            .replace(",", "\\,")
-            .replace("[", "\\[")
-            .replace("]", "\\]")
-            .replace("%", "\\%")
-            .replace("{", "\\{")
-            .replace("}", "\\}")
+            .replace("'", "'\\\\\\''")
+            .replace(":", "\\\\:")
+            .replace(",", "\\\\,")
+            .replace("%", "%%")
+
+        // En Android (Linux), las rutas no tienen C:, pero por si acaso escapamos el colón
+        val escapedFontRegular = fontFileRegular.replace(":", "\\:").replace("\\", "/")
+        val escapedFontItalic = fontFileItalic.replace(":", "\\:").replace("\\", "/")
 
         return subtitles.joinToString(",") { sub ->
             val startSec = sub.startTime / 1000.0
             val endSec = sub.endTime / 1000.0
-
-            val originalFilter = "drawtext=fontfile=$fontFileRegular:text='${escape(sub.original)}':" +
+            val originalFilter = "drawtext=fontfile='$escapedFontRegular':text='${escape(sub.original)}':" +
                     "enable='between(t,$startSec,$endSec)':x=(w-text_w)/2:y=h*0.85:" +
                     "fontsize=$fontSize:fontcolor=white:shadowcolor=black:shadowx=2:shadowy=2"
 
             if (sub.translation != null) {
-                val translationFilter = "drawtext=fontfile=$fontFileItalic:text='${escape(sub.translation)}':" +
+                val translationFilter = "drawtext=fontfile='$escapedFontItalic':text='${escape(sub.translation)}':" +
                         "enable='between(t,$startSec,$endSec)':x=(w-text_w)/2:y=h*0.10:" +
                         "fontsize=$fontSize:fontcolor=yellow:shadowcolor=black:shadowx=2:shadowy=2"
                 "$originalFilter,$translationFilter"
@@ -1080,8 +1079,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 outputFile.delete()
             }
 
-            val fontFileRegular = File(getFontDir(), "roboto_regular.ttf").absolutePath.replace(":", "\\:")
-            val fontFileItalic = File(getItalicFontDir(), "roboto_italic.ttf").absolutePath.replace(":", "\\:")
+            val fontFileRegular = File(getFontDir(), "roboto_regular.ttf").absolutePath
+            val fontFileItalic = File(getItalicFontDir(), "roboto_italic.ttf").absolutePath
 
             val videoWidth = getVideoWidth(videoFile)
             val fontSize = (videoWidth / 22).coerceIn(12, 36)
@@ -1097,20 +1096,19 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 return@Thread
             }
 
-            val filterScriptFile = File(requireContext().cacheDir, "drawtext_filter.txt")
-            filterScriptFile.writeText(drawtextFilter)
-
-            val command = "-y -i \"${videoFile.absolutePath}\" -filter_script:v \"${filterScriptFile.absolutePath}\" -c:v mpeg4 -q:v 2 -c:a copy \"${outputFile.absolutePath}\""
-            Log.d("FFmpegHardcode", "Comando: $command")
+            // Usamos h264_mediacodec con pix_fmt yuv420p para máxima compatibilidad con el hardware de Android
+            val command = "-y -i \"${videoFile.absolutePath}\" -vf \"$drawtextFilter,format=yuv420p\" -c:v h264_mediacodec -b:v 2M -c:a copy \"${outputFile.absolutePath}\""
+            Log.d("FFmpegHardcode", "Comando ejecutando: $command")
 
             FFmpegKit.executeAsync(command) { session ->
                 if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
                     saveToDownloads(outputFile, fileName, "video/mp4")
+                } else {
+                    Log.e("FFmpegHardcode", "FALLÓ la incrustación. Código: ${session.resultCode}")
                 }
                 requireActivity().runOnUiThread { clearSubtitles() }
                 ocultarProgreso()
                 videoFile.delete()
-                filterScriptFile.delete()
                 if (outputFile.exists()) outputFile.delete()
             }
         }.start()

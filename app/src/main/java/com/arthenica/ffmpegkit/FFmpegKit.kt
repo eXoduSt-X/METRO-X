@@ -8,27 +8,33 @@ fun interface ExecuteCallback {
 
 object FFmpegKit {
     private var isLoaded = false
+    private var loadError: String? = null
 
     init {
         try {
+            // Primero cargamos AbiDetect para que esté listo cuando ffmpegkit lo pida
+            System.loadLibrary("ffmpegkit_abidetect")
             System.loadLibrary("ffmpegkit")
             isLoaded = true
+            Log.d("FFmpegKit", "Librerías nativas cargadas correctamente con soporte AbiDetect")
         } catch (e: UnsatisfiedLinkError) {
-            Log.e("FFmpegKit", "Error cargando binario nativo: ${e.message}", e)
+            loadError = e.message
+            Log.e("FFmpegKit", "Error crítico JNI: ${e.message}")
         }
     }
 
     @JvmStatic
     fun execute(command: String): FFmpegSession {
         if (!isLoaded) {
-            Log.e("FFmpegKit", "Error: Librería nativa no cargada")
-            return FFmpegSession()
+            Log.e("FFmpegKit", "Error: Librería nativa no cargada. Último error: $loadError")
+            return FFmpegSession(-1)
         }
         val session = FFmpegSession()
 
         // Mejora: parseo de argumentos respetando comillas para rutas con espacios
         val arguments = parseArguments(command)
-        FFmpegKitConfig.nativeFFmpegExecute(session.sessionId, arguments)
+        val resultCode = FFmpegKitConfig.nativeFFmpegExecute(session.sessionId, arguments)
+        session.resultCode = resultCode
         return session
     }
 
@@ -36,7 +42,7 @@ object FFmpegKit {
     fun executeAsync(command: String, callback: ExecuteCallback): FFmpegSession {
         if (!isLoaded) {
             Log.e("FFmpegKit", "Error: Librería nativa no cargada (Async)")
-            val session = FFmpegSession()
+            val session = FFmpegSession(-1)
             callback.apply(session)
             return session
         }
@@ -45,9 +51,11 @@ object FFmpegKit {
             try {
                 val arguments = parseArguments(command)
                 val resultCode = FFmpegKitConfig.nativeFFmpegExecute(session.sessionId, arguments)
+                session.resultCode = resultCode
                 Log.d("FFmpegKit", "Ejecución finalizada con código: $resultCode")
             } catch (e: Exception) {
                 Log.e("FFmpegKit", "Error en hilo de ejecución: ${e.message}")
+                session.resultCode = -1
             } finally {
                 callback.apply(session)
             }
@@ -143,18 +151,18 @@ object FFmpegKitConfig {
     @JvmStatic fun disableRedirection() {}
 }
 
-class FFmpegSession {
+class FFmpegSession(initialCode: Int = 0) {
     val sessionId: Long = System.currentTimeMillis()
-    val returnCode: ReturnCode = ReturnCode()
+    var resultCode: Int = initialCode
+    val returnCode: ReturnCode get() = ReturnCode(resultCode)
     val allLogsAsString: String = "Conversión finalizada de forma nativa."
 }
 
-class ReturnCode {
-    fun isSuccess(): Boolean = true
-    fun isCancel(): Boolean = false
+class ReturnCode(val value: Int) {
+    fun isSuccess(): Boolean = value == 0
+    fun isCancel(): Boolean = value == 255
     
     companion object {
-        @JvmField val SUCCESS = ReturnCode()
-        @JvmStatic fun isSuccess(returnCode: ReturnCode?): Boolean = true
+        @JvmStatic fun isSuccess(returnCode: ReturnCode?): Boolean = returnCode?.isSuccess() == true
     }
 }

@@ -18,6 +18,12 @@ android {
         multiDexEnabled true
     }
 
+    sourceSets {
+        main {
+            jniLibs.srcDirs += ["${buildDir}/ffmpeg-kit-native"]
+        }
+    }
+
     buildTypes {
         release {
             shrinkResources true
@@ -158,20 +164,19 @@ dependencies {
     implementation 'io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1'
 }
 
-// Automatización para extraer los binarios de 16KB del AAR e inyectarlos directamente en el APK final sin pasar por D8
-android.applicationVariants.configureEach { variant ->
-    variant.outputs.configureEach {
-        def unzipTask = tasks.register("unzipFFmpegKit${variant.name.capitalize()}", Copy) {
-            from zipTree(file('libs/ffmpeg-kit-16kb-full.aar'))
-            into file("${buildDir}/intermediates/merged_native_libs/${variant.name}/out/lib")
-            include "jni/**/*.so"
-            eachFile { path = path.replaceFirst("jni/", "") }
-            includeEmptyDirs = false
-        }
-        tasks.named("merge${variant.name.capitalize()}NativeLibs").configure {
-            dependsOn unzipTask
-        }
+// Extracción manual de binarios para evitar conflictos de MergeSourceSetFolders
+task extractFFmpegNative(type: Copy) {
+    def aarFile = file('libs/ffmpeg-kit-16kb-full.aar')
+    if (aarFile.exists()) {
+        from zipTree(aarFile)
+        into file("${buildDir}/ffmpeg-kit-native")
+        include "jni/**/*.so"
+        eachFile { path = path.replaceFirst("jni/", "") }
+        includeEmptyDirs = false
     }
 }
+
+// Aseguramos que los binarios estén listos antes de cualquier tarea de compilación
+preBuild.dependsOn extractFFmpegNative
 
 // Invalidation Cache Trigger - Soporte Nativo Offline 16KB
