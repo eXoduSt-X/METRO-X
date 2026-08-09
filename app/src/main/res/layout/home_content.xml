@@ -148,17 +148,21 @@
                 android:layout_marginStart="3dp"
                 android:layout_marginEnd="3dp" />
             <Button
-                android:id="@+id/btnSplit"
-                android:layout_width="0dp"
-                android:layout_weight="1.0"
-                android:layout_height="match_parent"
-                android:backgroundTint="#333333"
-                android:text="@string/cortar_video"
-                android:textColor="#FFFFFF"
-                android:maxLines="2"
-                android:gravity="center"
-                style="?android:attr/buttonBarButtonStyle"
-                android:textSize="11sp" />
+    android:id="@+id/btnSplit"
+    android:layout_width="0dp"
+    android:layout_weight="1.0"
+    android:layout_height="match_parent"
+    android:backgroundTint="#333333"
+    android:text="@string/cortar_video"
+    android:textColor="#FFFFFF"
+    android:maxLines="2"
+    android:gravity="center"
+    style="?android:attr/buttonBarButtonStyle"
+    android:textSize="11sp"
+    android:drawableTop="@drawable/ic_split_video"
+    android:drawableTint="#FFFFFF"
+    android:drawablePadding="2dp" />
+
 
         </LinearLayout>
         <LinearLayout
