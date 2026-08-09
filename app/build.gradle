@@ -8,15 +8,20 @@ android {
     compileSdk 33
     namespace "code.name.monkey.retromusic"
 
-    defaultConfig {
-        minSdk 24
-        targetSdk 33
-        vectorDrawables.useSupportLibrary = true
-        applicationId 'code.name.monkey.metrox'
-        versionCode 10603
-        versionName '6.1.0'
-        multiDexEnabled true
+defaultConfig {
+    minSdk 24
+    targetSdk 33
+    vectorDrawables.useSupportLibrary = true
+    applicationId 'code.name.monkey.metrox'
+    versionCode 10603
+    versionName '6.1.0'
+    multiDexEnabled true
+
+    // >>> AGREGA ESTO PARA LIMITAR LAS ARQUITECTURAS Y BAJAR EL TÉMPANO DE PESO <<<
+    ndk {
+        abiFilters "arm64-v8a", "armeabi-v7a"
     }
+}
 
     sourceSets {
         main {
