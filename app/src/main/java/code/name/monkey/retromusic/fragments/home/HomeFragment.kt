@@ -388,6 +388,24 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
         setFixedIcon(binding.homeContent.btnPrevVideo, R.drawable.ic_skip_previous)
         setFixedIcon(binding.homeContent.btnNextVideo, R.drawable.ic_skip_next)
+
+        // Asignación de nuevos iconos XML
+        setFixedIcon(binding.homeContent.btnMergeVideos, R.drawable.ic_unir)
+        setFixedIcon(binding.homeContent.btnSplit, R.drawable.ic_cut)
+        setFixedIcon(binding.homeContent.btnMixVideo, R.drawable.ic_mkv)
+        setFixedIcon(binding.homeContent.btnFullscreen, R.drawable.ic_replace)
+        setFixedIcon(binding.homeContent.btnLoadSubtitles, R.drawable.ic_srt)
+        setFixedIcon(binding.homeContent.btnOpenFile, R.drawable.ic_vid)
+        setFixedIcon(binding.homeContent.btnChooseFolder, R.drawable.ic_vfolder)
+        setFixedIcon(binding.homeContent.btnConvertAudio, R.drawable.ic_mp3)
+        setFixedIcon(binding.homeContent.btnHardcodeSubtitles, R.drawable.ic_subs)
+        setFixedIcon(binding.homeContent.btnCreateVideoFromPhotos, R.drawable.ic_slide)
+        setFixedIcon(binding.homeContent.btnCreateGif, R.drawable.ic_gif)
+        setFixedIcon(binding.homeContent.btnYoutubeDownload, R.drawable.ic_youtube)
+
+        // Pendiente de decidir (mantiene icono temporal)
+        setFixedIcon(binding.homeContent.btnTagEditor, R.drawable.ic_dashboard)
+
         setPlayPauseIcon(false)
 
         fullscreenGestureDetector = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
