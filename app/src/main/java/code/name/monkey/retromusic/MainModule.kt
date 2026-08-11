@@ -12,10 +12,26 @@ import code.name.monkey.retromusic.fragments.genres.GenreDetailsViewModel
 import code.name.monkey.retromusic.fragments.playlists.PlaylistDetailsViewModel
 import code.name.monkey.retromusic.model.Genre
 import code.name.monkey.retromusic.repository.*
+import code.name.monkey.retromusic.network.MusicBrainzService
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.bind
 import org.koin.dsl.module
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+
+private val networkModule = module {
+    single {
+        Retrofit.Builder()
+            .baseUrl("https://musicbrainz.org/ws/2/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    single {
+        get<Retrofit>().create(MusicBrainzService::class.java)
+    }
+}
 
 private val roomModule = module {
 
@@ -156,6 +172,10 @@ private val viewModules = module {
     viewModel {
         YoutubeDownloaderViewModel()
     }
+
+    viewModel {
+        code.name.monkey.retromusic.activities.tageditor.BatchTagEditorViewModel(get())
+    }
 }
 
-val appModules = listOf(mainModule, dataModule, autoModule, viewModules, roomModule)
+val appModules = listOf(mainModule, dataModule, autoModule, viewModules, roomModule, networkModule)

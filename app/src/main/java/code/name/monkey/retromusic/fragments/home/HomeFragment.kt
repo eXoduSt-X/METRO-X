@@ -582,7 +582,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
 
         binding.homeContent.btnTagEditor.setOnClickListener {
-            // Placeholder
+            val intent = Intent(requireContext(), code.name.monkey.retromusic.activities.tageditor.BatchTagEditorActivity::class.java)
+            startActivity(intent)
         }
 
         binding.homeContent.btnYoutubeDownload.setOnClickListener {

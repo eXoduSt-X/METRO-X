@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#121212"
+    android:padding="8dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Batch Tag Editor (Mp3tag Style)"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="4dp" />
+
+    <TextView
+        android:id="@+id/tvCurrentFolder"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="No folder selected"
+        android:textColor="#DDDDDD"
+        android:textSize="10sp"
+        android:maxLines="1"
+        android:ellipsize="middle"
+        android:layout_marginBottom="4dp" />
+
+    <Button
+        android:id="@+id/btnSelectFolder"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:text="Select Album Folder"
+        android:backgroundTint="#333333"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp" />
+
+    <!-- Pattern Section -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="8dp"
+        android:background="#1A1A1A"
+        android:padding="2dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <androidx.appcompat.widget.AppCompatSpinner
+                android:id="@+id/spinnerPatterns"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:backgroundTint="#44FFFFFF"
+                android:background="#222222" />
+
+            <Button
+                android:id="@+id/btnApplyPattern"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Extract"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:backgroundTint="#444444"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/etPattern"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Custom Pattern: %track% - %title%"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#666666"
+            android:textSize="12sp"
+            android:inputType="text"
+            android:autofillHints="none"
+            android:backgroundTint="#22FFFFFF" />
+    </LinearLayout>
+
+    <!-- Search Section -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical">
+        <EditText
+            android:id="@+id/etArtistSearch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Artist"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#666666"
+            android:textSize="12sp"
+            android:inputType="text"
+            android:autofillHints="none"
+            android:backgroundTint="#22FFFFFF" />
+        <EditText
+            android:id="@+id/etAlbumSearch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Album"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#666666"
+            android:textSize="12sp"
+            android:inputType="text"
+            android:autofillHints="none"
+            android:backgroundTint="#22FFFFFF" />
+        <Button
+            android:id="@+id/btnFetchInternet"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Web Search"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp"
+            android:backgroundTint="#444444"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:layout_marginTop="8dp">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="LOCAL FILES (Drag)"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp"
+            android:gravity="center"
+            android:textStyle="bold" />
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="ALBUM METADATA"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp"
+            android:gravity="center"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal"
+        android:weightSum="2">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvSongs"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#161616" />
+
+        <View
+            android:layout_width="0.5dp"
+            android:layout_height="match_parent"
+            android:background="#333333" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvMetadata"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#181818" />
+    </LinearLayout>
+
+    <!-- Bottom Controls -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+        <Button
+            android:id="@+id/btnSortAlpha"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="A-Z"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp"
+            android:backgroundTint="#444444"
+            android:layout_marginEnd="2dp" />
+        <Button
+            android:id="@+id/btnClearTags"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Clear"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp"
+            android:backgroundTint="#444444"
+            android:layout_marginEnd="2dp" />
+        <Button
+            android:id="@+id/btnRenameFiles"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.5"
+            android:text="Rename Files"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp"
+            android:backgroundTint="#444444"
+            android:layout_marginEnd="2dp" />
+        <Button
+            android:id="@+id/btnSaveAll"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="2"
+            android:text="SAVE TAGS"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp"
+            android:backgroundTint="#444444" />
+    </LinearLayout>
+
+</LinearLayout>
