@@ -104,25 +104,44 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     private val updateSubtitleTask = object : Runnable {
         override fun run() {
-            if (binding.homeContent.videoPlayer.isPlaying) {
-                val player = binding.homeContent.videoPlayer
+            val player = _binding?.homeContent?.videoPlayer
+            if (player != null) {
                 val currentPos = player.currentPosition
                 val currentSub = subtitleList.find { currentPos.toLong() in it.startTime..it.endTime }
-                binding.homeContent.tvSubtitleOverlay.text = if (currentSub != null) {
-                    if (currentSub.translation != null) {
-                        "${currentSub.original}\n${currentSub.translation}"
-                    } else {
-                        currentSub.original
+                
+                if (currentSub != null) {
+                    _binding?.homeContent?.tvSubtitleOverlay?.let { tv ->
+                        val subText = if (currentSub.translation != null) {
+                            "${currentSub.original}\n${currentSub.translation}"
+                        } else {
+                            currentSub.original
+                        }
+                        if (tv.text != subText) {
+                            tv.text = subText
+                        }
+                        tv.visibility = View.VISIBLE
                     }
                 } else {
-                    ""
+                    _binding?.homeContent?.tvSubtitleOverlay?.let { tv ->
+                        val currentText = tv.text.toString()
+                        // Si el texto actual NO es un mensaje de progreso, limpiamos
+                        if (!currentText.contains("%") && !currentText.contains(getString(R.string.procesando_archivo))) {
+                            if (currentText.isNotEmpty()) {
+                                tv.text = ""
+                            }
+                            // No lo ponemos en GONE aquí para que esté listo para el próximo subtítulo
+                        }
+                    }
                 }
-                binding.homeContent.videoSeekBar.max = player.duration
-                binding.homeContent.videoSeekBar.progress = currentPos
-                binding.homeContent.tvCurrentTime.text = formatTime(currentPos)
-                binding.homeContent.tvTotalTime.text = formatTime(player.duration)
+
+                if (player.isPlaying) {
+                    binding.homeContent.videoSeekBar.max = player.duration
+                    binding.homeContent.videoSeekBar.progress = currentPos
+                    binding.homeContent.tvCurrentTime.text = formatTime(currentPos)
+                    binding.homeContent.tvTotalTime.text = formatTime(player.duration)
+                }
             }
-            handler.postDelayed(this, 500)
+            handler.postDelayed(this, 250)
         }
     }
 
@@ -227,7 +246,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     private fun unirVideos(uris: List<Uri>) {
         Toast.makeText(requireContext(), "Uniendo ${uris.size} videos...", Toast.LENGTH_LONG).show()
-        mostrarProgreso()
+        val totalDuration = uris.sumOf { getMediaDuration(it) }
+        mostrarProgreso(totalDuration)
 
         Thread {
             try {
@@ -246,9 +266,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
                 val command = "-f concat -safe 0 -i \"${listaFile.absolutePath}\" -c copy \"${outputFile.absolutePath}\""
                 Log.d("FFmpegMerge", "Comando: $command")
-                requireActivity().runOnUiThread { mostrarProgreso() }
 
-                FFmpegKit.executeAsync(command) { session ->
+                FFmpegKit.executeAsync(command, { session ->
                     if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
                         saveToDownloads(outputFile, nombreSalida, "video/mp4")
                     } else {
@@ -261,7 +280,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                     listaFile.delete()
                     if (outputFile.exists()) outputFile.delete()
                     ocultarProgreso()
-                }
+                }, { stats ->
+                    actualizarProgreso(stats.time, totalDuration)
+                })
             } catch (exception: Exception) {
                 Log.e("FFmpegMerge", "Error preparando archivos: ${exception.message}")
                 requireActivity().runOnUiThread {
@@ -290,8 +311,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         val lines = inputStream.bufferedReader().readLines()
         var i = 0
         while (i < lines.size) {
-            if (lines[i].contains("-->")) {
-                val times = lines[i].split(" --> ")
+            val line = lines[i].trim()
+            if (line.contains(" --> ")) {
+                val times = line.split(" --> ")
                 val start = parseTimeToMillis(times[0].trim())
                 val end = parseTimeToMillis(times[1].trim())
                 val textLines = mutableListOf<String>()
@@ -310,11 +332,33 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 i++
             }
         }
+        Log.d("parseSrt", "Subtítulos cargados: ${subtitleList.size}")
     }
 
     private fun parseTimeToMillis(time: String): Long {
-        val parts = time.replace(",", ":").split(":")
-        return (parts[0].toLong() * 3600000) + (parts[1].toLong() * 60000) + (parts[2].toLong() * 1000) + parts[3].toLong()
+        return try {
+            val normalizedTime = time.replace(",", ":").replace(".", ":")
+            val parts = normalizedTime.split(":")
+            when (parts.size) {
+                4 -> {
+                    val h = parts[0].trim().toLong()
+                    val m = parts[1].trim().toLong()
+                    val s = parts[2].trim().toLong()
+                    val ms = parts[3].trim().toLong()
+                    (h * 3600000) + (m * 60000) + (s * 1000) + ms
+                }
+                3 -> {
+                    // Formato mm:ss:ms o similar
+                    val m = parts[0].trim().toLong()
+                    val s = parts[1].trim().toLong()
+                    val ms = parts[2].trim().toLong()
+                    (m * 60000) + (s * 1000) + ms
+                }
+                else -> 0L
+            }
+        } catch (e: Exception) {
+            0L
+        }
     }
 
     private fun loadVideosFromSelectedFolder(uri: Uri) {
@@ -401,9 +445,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         setFixedIcon(binding.homeContent.btnHardcodeSubtitles, R.drawable.ic_subs)
         setFixedIcon(binding.homeContent.btnCreateVideoFromPhotos, R.drawable.ic_slide)
         setFixedIcon(binding.homeContent.btnCreateGif, R.drawable.ic_gif)
-        setFixedIcon(binding.homeContent.btnYoutubeDownload, R.drawable.ic_youtube)
-
-        // Pendiente de decidir (mantiene icono temporal)
+        setFixedIcon(binding.homeContent.btnYoutubeDownload, R.drawable.ic_youtube, 40) // Icono más grande para YouTube
         setFixedIcon(binding.homeContent.btnTagEditor, R.drawable.ic_dashboard)
 
         setPlayPauseIcon(false)
@@ -715,11 +757,29 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
     }
 
-    private fun mostrarProgreso() {
+    private fun mostrarProgreso(totalDurationMs: Long = 0) {
         requireActivity().runOnUiThread {
-            _binding?.homeContent?.progressBar?.visibility = View.VISIBLE
-            _binding?.homeContent?.tvSubtitleOverlay?.text = getString(R.string.procesando_archivo)
-            _binding?.homeContent?.tvSubtitleOverlay?.visibility = View.VISIBLE
+            _binding?.homeContent?.progressBar?.let { pb ->
+                pb.progress = 0
+                pb.isIndeterminate = totalDurationMs <= 0
+                pb.visibility = View.VISIBLE
+            }
+            _binding?.homeContent?.tvSubtitleOverlay?.let { tv ->
+                tv.text = getString(R.string.procesando_archivo)
+                tv.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun actualizarProgreso(currentTimeMs: Double, totalDurationMs: Long) {
+        if (totalDurationMs <= 0) return
+        val progress = ((currentTimeMs / totalDurationMs) * 100).toInt().coerceIn(0, 100)
+        requireActivity().runOnUiThread {
+            _binding?.homeContent?.progressBar?.let { pb ->
+                pb.isIndeterminate = false
+                pb.progress = progress
+            }
+            _binding?.homeContent?.tvSubtitleOverlay?.text = "${getString(R.string.procesando_archivo)} ($progress%)"
         }
     }
 
@@ -731,9 +791,22 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
     }
 
+    private fun getMediaDuration(uri: Uri): Long {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(requireContext(), uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
+        } catch (e: Exception) {
+            0L
+        } finally {
+            retriever.release()
+        }
+    }
+
     private fun agregarAudioAVideo(videoUri: Uri, audioUri: Uri) {
         Toast.makeText(requireContext(), R.string.agregando_audio_msg, Toast.LENGTH_LONG).show()
-        mostrarProgreso()
+        val duration = getMediaDuration(videoUri)
+        mostrarProgreso(duration)
 
         Thread {
             val videoFile = cacheUriToFile(videoUri, "input_addaudio.mp4")
@@ -752,7 +825,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             val command = "-y -i \"${videoFile.absolutePath}\" -i \"${audioFile.absolutePath}\" -map 0:v -map 1:a -c:v copy -c:a aac -shortest \"${outputFile.absolutePath}\""
             Log.d("FFmpegAddAudio", "Comando: $command")
 
-            FFmpegKit.executeAsync(command) { session ->
+            FFmpegKit.executeAsync(command, { session ->
                 if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
                     saveToDownloads(outputFile, fileName, "video/mp4")
                 } else {
@@ -765,13 +838,16 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 videoFile.delete()
                 audioFile.delete()
                 if (outputFile.exists()) outputFile.delete()
-            }
+            }, { stats ->
+                actualizarProgreso(stats.time, duration)
+            })
         }.start()
     }
 
     private fun convertirVideoAGif(videoUri: Uri, fps: Int = 10, anchoMax: Int = 480) {
         Toast.makeText(requireContext(), R.string.creando_gif_msg, Toast.LENGTH_LONG).show()
-        mostrarProgreso()
+        val duration = getMediaDuration(videoUri)
+        mostrarProgreso(duration)
 
         Thread {
             val videoFile = cacheUriToFile(videoUri, "input_gif.mp4")
@@ -794,7 +870,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             val command = "-y -i \"${videoFile.absolutePath}\" -filter_complex_script \"${filterScriptFile.absolutePath}\" \"${outputFile.absolutePath}\""
             Log.d("FFmpegGif", "Comando: $command")
 
-            FFmpegKit.executeAsync(command) { session ->
+            FFmpegKit.executeAsync(command, { session ->
                 if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
                     saveToDownloads(outputFile, fileName, "image/gif")
                 }
@@ -802,7 +878,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 videoFile.delete()
                 filterScriptFile.delete()
                 if (outputFile.exists()) outputFile.delete()
-            }
+            }, { stats ->
+                actualizarProgreso(stats.time, duration)
+            })
         }.start()
     }
 
@@ -819,19 +897,32 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     }
 
     private fun setPlayPauseIcon(isPlaying: Boolean) {
-        val sizePx = (20 * resources.displayMetrics.density).toInt()
+        val sizePx = (18 * resources.displayMetrics.density).toInt()
         val drawableRes = if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play_arrow
         val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
         icon?.setBounds(0, 0, sizePx, sizePx)
         binding.homeContent.btnPlayPause.setCompoundDrawables(null, icon, null, null)
-        binding.homeContent.btnPlayPause.text = if (isPlaying) getString(R.string.pause).uppercase() else getString(R.string.play).uppercase()
+        binding.homeContent.btnPlayPause.compoundDrawablePadding = (2 * resources.displayMetrics.density).toInt()
+        binding.homeContent.btnPlayPause.setAllCaps(false)
+        binding.homeContent.btnPlayPause.text = if (isPlaying) getString(R.string.pause) else getString(R.string.play)
     }
 
-    private fun setFixedIcon(button: android.widget.Button, drawableRes: Int) {
-        val sizePx = (20 * resources.displayMetrics.density).toInt()
+    private fun setFixedIcon(button: android.widget.Button, drawableRes: Int, sizeDp: Int = 18) {
+        val sizePx = (sizeDp * resources.displayMetrics.density).toInt()
         val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
         icon?.setBounds(0, 0, sizePx, sizePx)
-        button.setCompoundDrawables(null, icon, null, null)
+        
+        if (button.text.isNullOrEmpty()) {
+            button.setCompoundDrawables(icon, null, null, null)
+            button.compoundDrawablePadding = 0
+            button.gravity = android.view.Gravity.CENTER
+            // Eliminar paddings para que el icono ocupe todo
+            button.setPadding(0, 0, 0, 0)
+        } else {
+            button.setCompoundDrawables(null, icon, null, null)
+            button.compoundDrawablePadding = (2 * resources.displayMetrics.density).toInt()
+        }
+        button.setAllCaps(false)
     }
 
     private fun adjustPlaylistButtons() {
@@ -1044,7 +1135,10 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 "-y -i \"${videoFile.absolutePath}\" -i \"${subFile.absolutePath}\" -c copy -c:s srt -disposition:s:0 default \"${outputFile.absolutePath}\""
             }
 
-            FFmpegKit.executeAsync(command) { session ->
+            val duration = getMediaDuration(videoUri)
+            mostrarProgreso(duration)
+
+            FFmpegKit.executeAsync(command, { session ->
                 if (ReturnCode.isSuccess(session.returnCode)) {
                     try {
                         resolver.openOutputStream(uri)?.use { outputStream ->
@@ -1064,11 +1158,14 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                         Toast.makeText(requireContext(), R.string.error_en_ffmpeg, Toast.LENGTH_SHORT).show()
                     }
                 }
+                ocultarProgreso()
                 videoFile.delete()
                 subFile.delete()
                 audioUri?.let { File(requireContext().cacheDir, "input_audio.mp3").delete() }
                 if (outputFile.exists()) outputFile.delete()
-            }
+            }, { stats ->
+                actualizarProgreso(stats.time, duration)
+            })
         }
     }
 
@@ -1082,6 +1179,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         requireActivity().runOnUiThread { mostrarProgreso() }
 
         val videoUri = videoPlaylist[currentIndex]
+        val duration = getMediaDuration(videoUri)
+        mostrarProgreso(duration)
+
         Thread {
             val originalName = requireContext().contentResolver.query(
                 videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
@@ -1119,7 +1219,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             val command = "-y -i \"${videoFile.absolutePath}\" -vf \"$drawtextFilter,format=yuv420p\" -c:v h264_mediacodec -b:v 2M -c:a copy \"${outputFile.absolutePath}\""
             Log.d("FFmpegHardcode", "Comando ejecutando: $command")
 
-            FFmpegKit.executeAsync(command) { session ->
+            FFmpegKit.executeAsync(command, { session ->
                 if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
                     saveToDownloads(outputFile, fileName, "video/mp4")
                 } else {
@@ -1129,7 +1229,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 ocultarProgreso()
                 videoFile.delete()
                 if (outputFile.exists()) outputFile.delete()
-            }
+            }, { stats ->
+                actualizarProgreso(stats.time, duration)
+            })
         }.start()
     }
 
@@ -1169,8 +1271,11 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
                 val command = "-y $inputArgs-filter_complex_script \"${filterScriptFile.absolutePath}\" -map [outv] -c:v mpeg4 -q:v 3 \"${outputFile.absolutePath}\""
                 Log.d("FFmpegSlideshow", "Comando: $command")
+                
+                val totalDuration = (uris.size * 3000).toLong() // 3 segundos por imagen
+                mostrarProgreso(totalDuration)
 
-                FFmpegKit.executeAsync(command) { session ->
+                FFmpegKit.executeAsync(command, { session ->
                     if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
                         saveToDownloads(outputFile, fileName, "video/mp4")
                     }
@@ -1178,7 +1283,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                     carpetaTemp.deleteRecursively()
                     filterScriptFile.delete()
                     if (outputFile.exists()) outputFile.delete()
-                }
+                }, { stats ->
+                    actualizarProgreso(stats.time, totalDuration)
+                })
             } catch (exception: Exception) {
                 ocultarProgreso()
             }
@@ -1205,15 +1312,20 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
 
         val destUri = resolver.insert(collectionUri, contentValues)
-        requireActivity().runOnUiThread { mostrarProgreso() }
+        val duration = try {
+            val start = parseTimeToMillis(startTime)
+            val end = parseTimeToMillis(endTime)
+            (end - start).toLong()
+        } catch (e: Exception) { 0L }
+        mostrarProgreso(duration)
 
         if (destUri != null) {
             val outputFile = File(requireContext().cacheDir, "output_split.mp4")
 
             val command = "-y -i \"${videoFile.absolutePath}\" -ss $startTime -to $endTime -c copy \"${outputFile.absolutePath}\""
 
-            FFmpegKit.executeAsync(command) { session ->
-                requireActivity().runOnUiThread { ocultarProgreso() }
+            FFmpegKit.executeAsync(command, { session ->
+                ocultarProgreso()
                 if (ReturnCode.isSuccess(session.returnCode)) {
                     try {
                         resolver.openOutputStream(destUri)?.use { outputStream ->
@@ -1235,7 +1347,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 }
                 videoFile.delete()
                 if (outputFile.exists()) outputFile.delete()
-            }
+            }, { stats ->
+                actualizarProgreso(stats.time, duration)
+            })
         }
     }
 
@@ -1302,6 +1416,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     private fun convertirAudiosAMp3(uris: List<Uri>, calidad: Int = 2) {
         Toast.makeText(requireContext(), "Iniciando conversión masiva...", Toast.LENGTH_LONG).show()
+        val totalUris = uris.size
         Thread {
             var exitosos = 0
             var fallidos = 0
@@ -1321,9 +1436,18 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 val outputFile = File(requireContext().cacheDir, "output_temp_$index.mp3")
                 if (outputFile.exists()) outputFile.delete()
 
+                val duration = getMediaDuration(uri)
+                requireActivity().runOnUiThread {
+                    mostrarProgreso(duration)
+                    _binding?.homeContent?.tvSubtitleOverlay?.text = "Convirtiendo ($index/$totalUris): $baseName"
+                }
+
                 val command = "-y -i \"${inputFile.absolutePath}\" -map_metadata 0 -id3v2_version 3 -c:a libmp3lame -q:a $calidad \"${outputFile.absolutePath}\""
 
-                val session = FFmpegKit.execute(command)
+                val session = FFmpegKit.execute(command) { stats ->
+                    actualizarProgreso(stats.time, duration)
+                }
+                
                 if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
                     saveToDownloads(outputFile, fileName, "audio/mpeg")
                     exitosos++
@@ -1335,6 +1459,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 if (outputFile.exists()) outputFile.delete()
             }
             requireActivity().runOnUiThread {
+                ocultarProgreso()
                 Toast.makeText(requireContext(), "Conversión: $exitosos ok, $fallidos fallidos", Toast.LENGTH_LONG).show()
             }
         }.start()

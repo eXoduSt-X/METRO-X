@@ -15,7 +15,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.retromusic.databinding.ActivityBatchTagEditorBinding
 import org.koin.androidx.viewmodel.ext.android.viewModel
-import java.io.File
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -193,8 +192,8 @@ class BatchTagEditorActivity : AppCompatActivity() {
             val durationMs = durationStr?.toLong() ?: 0
             val minutes = (durationMs / 1000) / 60
             val seconds = (durationMs / 1000) % 60
-            String.format("%02d:%02d", minutes, seconds)
-        } catch (e: Exception) {
+            String.format(java.util.Locale.getDefault(), "%02d:%02d", minutes, seconds)
+        } catch (_: Exception) {
             "--:--"
         }
     }

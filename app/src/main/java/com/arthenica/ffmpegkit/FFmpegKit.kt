@@ -6,13 +6,28 @@ fun interface ExecuteCallback {
     fun apply(session: FFmpegSession)
 }
 
+fun interface StatisticsCallback {
+    fun apply(statistics: Statistics)
+}
+
+data class Statistics(
+    val sessionId: Long,
+    val videoFrameNumber: Int,
+    val videoFps: Float,
+    val videoQuality: Float,
+    val size: Long,
+    val time: Double,
+    val bitrate: Double,
+    val speed: Double
+)
+
 object FFmpegKit {
     private var isLoaded = false
     private var loadError: String? = null
+    private val sessions = mutableMapOf<Long, FFmpegSession>()
 
     init {
         try {
-            // Primero cargamos AbiDetect para que esté listo cuando ffmpegkit lo pida
             System.loadLibrary("ffmpegkit_abidetect")
             System.loadLibrary("ffmpegkit")
             isLoaded = true
@@ -23,23 +38,35 @@ object FFmpegKit {
         }
     }
 
+    private fun registerSession(session: FFmpegSession) {
+        sessions[session.sessionId] = session
+    }
+
+    fun getSession(sessionId: Long): FFmpegSession? = sessions[sessionId]
+
     @JvmStatic
-    fun execute(command: String): FFmpegSession {
+    fun execute(command: String, statsCallback: StatisticsCallback? = null): FFmpegSession {
         if (!isLoaded) {
             Log.e("FFmpegKit", "Error: Librería nativa no cargada. Último error: $loadError")
             return FFmpegSession(-1)
         }
         val session = FFmpegSession()
+        session.statisticsCallback = statsCallback
+        registerSession(session)
 
-        // Mejora: parseo de argumentos respetando comillas para rutas con espacios
         val arguments = parseArguments(command)
         val resultCode = FFmpegKitConfig.nativeFFmpegExecute(session.sessionId, arguments)
         session.resultCode = resultCode
+        sessions.remove(session.sessionId)
         return session
     }
 
     @JvmStatic
-    fun executeAsync(command: String, callback: ExecuteCallback): FFmpegSession {
+    fun executeAsync(
+        command: String, 
+        callback: ExecuteCallback, 
+        statsCallback: StatisticsCallback? = null
+    ): FFmpegSession {
         if (!isLoaded) {
             Log.e("FFmpegKit", "Error: Librería nativa no cargada (Async)")
             val session = FFmpegSession(-1)
@@ -47,6 +74,9 @@ object FFmpegKit {
             return session
         }
         val session = FFmpegSession()
+        session.statisticsCallback = statsCallback
+        registerSession(session)
+
         Thread {
             try {
                 val arguments = parseArguments(command)
@@ -58,6 +88,7 @@ object FFmpegKit {
                 session.resultCode = -1
             } finally {
                 callback.apply(session)
+                sessions.remove(session.sessionId)
             }
         }.start()
         return session
@@ -88,17 +119,11 @@ object FFmpegKit {
 
 object FFmpegKitConfig {
     @JvmStatic
-    fun init() {
-        // Hook de inicialización estándar
-    }
+    fun init() {}
 
     @JvmStatic
     fun getVersion(): String = "6.0"
 
-    // =========================================================================
-    //   MÉTODOS NATIVOS EXTERNAL (LLAMADAS DESDE KOTLIN HACIA C++)
-    //   100% Alineados con los Símbolos Exportados del binario
-    // =========================================================================
     @JvmStatic external fun disableNativeRedirection()
     @JvmStatic external fun enableNativeRedirection()
     @JvmStatic external fun getNativeBuildDate(): String
@@ -114,10 +139,6 @@ object FFmpegKitConfig {
     @JvmStatic external fun setNativeEnvironmentVariable(variableName: String, variableValue: String): Int
     @JvmStatic external fun setNativeLogLevel(level: Int)
 
-    // =========================================================================
-    //   CALLBACKS ENLAZADOS (LLAMADAS DESDE C++ HACIA KOTLIN)
-    //   100% Sincronizados con las Cadenas de Introspección del Servidor
-    // =========================================================================
     @JvmStatic
     fun log(sessionId: Long, level: Int, messageBytes: ByteArray) {
         val message = String(messageBytes)
@@ -126,27 +147,19 @@ object FFmpegKitConfig {
 
     @JvmStatic
     fun statistics(sessionId: Long, videoFrameNumber: Int, videoFps: Float, videoQuality: Float, size: Long, time: Double, bitrate: Double, speed: Double) {
-        // Estructura (JIFFJDDD)V verificada en el log
+        val stats = Statistics(sessionId, videoFrameNumber, videoFps, videoQuality, size, time, bitrate, speed)
+        FFmpegKit.getSession(sessionId)?.statisticsCallback?.apply(stats)
     }
 
     @JvmStatic
-    fun statisticsWithCallback(sessionId: Long, statisticsAddress: Long) {
-        // Hook de puntero JNI complementario
-    }
+    fun statisticsWithCallback(sessionId: Long, statisticsAddress: Long) {}
 
     @JvmStatic
-    fun safOpen(fd: Int): Int {
-        // Firma (I)I verificada en el log
-        return fd
-    }
+    fun safOpen(fd: Int): Int = fd
 
-    // CORRECCIÓN TÉCNICA CRÍTICA: Cambiado obligatoriamente a : Int para satisfacer la firma (I)I
     @JvmStatic
-    fun safClose(fd: Int): Int {
-        return 0
-    }
+    fun safClose(fd: Int): Int = 0
 
-    // --- Métodos de compatibilidad requeridos por la UI ---
     @JvmStatic fun enableRedirection() {}
     @JvmStatic fun disableRedirection() {}
 }
@@ -154,6 +167,7 @@ object FFmpegKitConfig {
 class FFmpegSession(initialCode: Int = 0) {
     val sessionId: Long = System.currentTimeMillis()
     var resultCode: Int = initialCode
+    var statisticsCallback: StatisticsCallback? = null
     val returnCode: ReturnCode get() = ReturnCode(resultCode)
     val allLogsAsString: String = "Conversión finalizada de forma nativa."
 }
