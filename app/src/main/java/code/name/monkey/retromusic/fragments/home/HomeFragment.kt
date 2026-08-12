@@ -914,7 +914,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
       icon?.setBounds(0, 0, widthPx, heightPx)
   
       if (button.text.isNullOrEmpty()) {
-          button.setCompoundDrawables(icon, null, null, null)
+          button.setCompoundDrawables(null, icon, null, null)
           button.compoundDrawablePadding = 0
           button.gravity = android.view.Gravity.CENTER
           button.setPadding(0, 0, 0, 0)
