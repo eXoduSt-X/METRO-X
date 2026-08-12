@@ -445,7 +445,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         setFixedIcon(binding.homeContent.btnHardcodeSubtitles, R.drawable.ic_subs)
         setFixedIcon(binding.homeContent.btnCreateVideoFromPhotos, R.drawable.ic_slide)
         setFixedIcon(binding.homeContent.btnCreateGif, R.drawable.ic_gif)
-        setFixedIcon(binding.homeContent.btnYoutubeDownload, R.drawable.ic_youtube, 40) // Icono más grande para YouTube
+        setFixedIcon(binding.homeContent.btnYoutubeDownload, R.drawable.ic_youtube, 130, 29) // Logo ancho, proporción correcta
         setFixedIcon(binding.homeContent.btnTagEditor, R.drawable.ic_dashboard)
 
         setPlayPauseIcon(false)
@@ -907,23 +907,23 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         binding.homeContent.btnPlayPause.text = if (isPlaying) getString(R.string.pause) else getString(R.string.play)
     }
 
-    private fun setFixedIcon(button: android.widget.Button, drawableRes: Int, sizeDp: Int = 18) {
-        val sizePx = (sizeDp * resources.displayMetrics.density).toInt()
-        val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
-        icon?.setBounds(0, 0, sizePx, sizePx)
-        
-        if (button.text.isNullOrEmpty()) {
-            button.setCompoundDrawables(icon, null, null, null)
-            button.compoundDrawablePadding = 0
-            button.gravity = android.view.Gravity.CENTER
-            // Eliminar paddings para que el icono ocupe todo
-            button.setPadding(0, 0, 0, 0)
-        } else {
-            button.setCompoundDrawables(null, icon, null, null)
-            button.compoundDrawablePadding = (2 * resources.displayMetrics.density).toInt()
-        }
-        button.setAllCaps(false)
-    }
+ private fun setFixedIcon(button: android.widget.Button, drawableRes: Int, widthDp: Int = 18, heightDp: Int = widthDp) {
+      val widthPx = (widthDp * resources.displayMetrics.density).toInt()
+      val heightPx = (heightDp * resources.displayMetrics.density).toInt()
+      val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
+      icon?.setBounds(0, 0, widthPx, heightPx)
+  
+      if (button.text.isNullOrEmpty()) {
+          button.setCompoundDrawables(icon, null, null, null)
+          button.compoundDrawablePadding = 0
+          button.gravity = android.view.Gravity.CENTER
+          button.setPadding(0, 0, 0, 0)
+      } else {
+          button.setCompoundDrawables(null, icon, null, null)
+          button.compoundDrawablePadding = (2 * resources.displayMetrics.density).toInt()
+     }
+      button.setAllCaps(false)
+   }
 
     private fun adjustPlaylistButtons() {
         val buttons = listOf(
