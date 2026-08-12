@@ -907,9 +907,16 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         binding.homeContent.btnPlayPause.text = if (isPlaying) getString(R.string.pause) else getString(R.string.play)
     }
 
- private fun setFixedIcon(button: android.widget.Button, drawableRes: Int, widthDp: Int = 18, heightDp: Int = widthDp) {
+ private fun setFixedIcon(
+    button: android.widget.Button,
+    drawableRes: Int,
+    widthDp: Int = 18,
+    heightDp: Int = widthDp,
+    topPaddingDp: Int = 4 // nuevo: aire entre el borde superior y el icono
+) {
     val widthPx = (widthDp * resources.displayMetrics.density).toInt()
     val heightPx = (heightDp * resources.displayMetrics.density).toInt()
+    val topPaddingPx = (topPaddingDp * resources.displayMetrics.density).toInt()
     val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
     icon?.setBounds(0, 0, widthPx, heightPx)
 
@@ -919,8 +926,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         button.gravity = android.view.Gravity.CENTER_HORIZONTAL
         button.setPadding(0, 0, 0, 0)
 
-        // Centrado vertical manual: el texto vacío igual reserva línea de alto,
-        // así que calculamos el padding real una vez medido el botón.
         button.post {
             val verticalPad = ((button.height - heightPx) / 2).coerceAtLeast(0)
             button.setPadding(0, verticalPad, 0, verticalPad)
@@ -928,6 +933,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     } else {
         button.setCompoundDrawables(null, icon, null, null)
         button.compoundDrawablePadding = (2 * resources.displayMetrics.density).toInt()
+        button.setPadding(button.paddingLeft, topPaddingPx, button.paddingRight, button.paddingBottom)
     }
     button.setAllCaps(false)
 }
