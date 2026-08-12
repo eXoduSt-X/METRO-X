@@ -301,28 +301,23 @@
                 android:textSize="8sp" />
         </LinearLayout>
 
-        <FrameLayout
+        <Button
             android:id="@+id/btnYoutubeDownload"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginTop="8dp"
-            android:background="#333333"
-            android:foreground="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:layout_gravity="center"
-                android:paddingHorizontal="32dp"
-                android:paddingVertical="12dp"
-                android:scaleType="fitCenter"
-                android:adjustViewBounds="true"
-                android:src="@drawable/ic_youtube"
-                android:contentDescription="YouTube" />
-
-        </FrameLayout>
+            android:backgroundTint="#333333"
+            android:textColor="#FFFFFF"
+            android:text=""
+            android:paddingTop="0dp"
+            android:paddingBottom="0dp"
+            android:minHeight="0dp"
+            android:minWidth="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:textAllCaps="false"
+            android:includeFontPadding="false"
+            android:gravity="center" />
 
 
         <androidx.recyclerview.widget.RecyclerView
