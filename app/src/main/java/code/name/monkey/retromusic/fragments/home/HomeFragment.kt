@@ -908,22 +908,29 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     }
 
  private fun setFixedIcon(button: android.widget.Button, drawableRes: Int, widthDp: Int = 18, heightDp: Int = widthDp) {
-      val widthPx = (widthDp * resources.displayMetrics.density).toInt()
-      val heightPx = (heightDp * resources.displayMetrics.density).toInt()
-      val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
-      icon?.setBounds(0, 0, widthPx, heightPx)
-  
-      if (button.text.isNullOrEmpty()) {
-          button.setCompoundDrawables(null, icon, null, null)
-          button.compoundDrawablePadding = 0
-          button.gravity = android.view.Gravity.CENTER
-          button.setPadding(0, 0, 0, 0)
-      } else {
-          button.setCompoundDrawables(null, icon, null, null)
-          button.compoundDrawablePadding = (2 * resources.displayMetrics.density).toInt()
-     }
-      button.setAllCaps(false)
-   }
+    val widthPx = (widthDp * resources.displayMetrics.density).toInt()
+    val heightPx = (heightDp * resources.displayMetrics.density).toInt()
+    val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
+    icon?.setBounds(0, 0, widthPx, heightPx)
+
+    if (button.text.isNullOrEmpty()) {
+        button.setCompoundDrawables(null, icon, null, null)
+        button.compoundDrawablePadding = 0
+        button.gravity = android.view.Gravity.CENTER_HORIZONTAL
+        button.setPadding(0, 0, 0, 0)
+
+        // Centrado vertical manual: el texto vacío igual reserva línea de alto,
+        // así que calculamos el padding real una vez medido el botón.
+        button.post {
+            val verticalPad = ((button.height - heightPx) / 2).coerceAtLeast(0)
+            button.setPadding(0, verticalPad, 0, verticalPad)
+        }
+    } else {
+        button.setCompoundDrawables(null, icon, null, null)
+        button.compoundDrawablePadding = (2 * resources.displayMetrics.density).toInt()
+    }
+    button.setAllCaps(false)
+}
 
     private fun adjustPlaylistButtons() {
         val buttons = listOf(
