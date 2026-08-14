@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.view.*
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,6 +42,7 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
     private var lyricsType: LyricsType = LyricsType.NORMAL_LYRICS
     private var currentProgressMillis: Int = 0
     private var isVideoLoaded = false
+    private var isKeyboardVisible = false
 
     private lateinit var updateHelper: MusicProgressViewUpdateHelper
     private lateinit var videoPickerLauncher: ActivityResultLauncher<String>
@@ -57,10 +59,10 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
         super.onViewCreated(view, savedInstanceState)
         enterTransition = Fade()
         exitTransition = Fade()
-        
+
         _binding = FragmentLyricsBinding.bind(view)
         updateHelper = MusicProgressViewUpdateHelper(this, 50, 50)
-        
+
         updateTitleSong()
         setupLyricsView()
         loadLyrics()
@@ -72,10 +74,11 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
 
     private fun setupLyricsView() {
         binding.lyricsView.apply {
-            setCurrentColor(accentColor())
-            setTimeTextColor(accentColor())
-            setTimelineColor(accentColor())
-            setTimelineTextColor(accentColor())
+            setCurrentColor(Color.YELLOW)
+            setTimeTextColor(Color.YELLOW)
+            setTimelineColor(Color.YELLOW)
+            setTimelineTextColor(Color.YELLOW)
+            setPreviousLineColor(accentColor())
             setDraggable(true, LrcView.OnPlayClickListener {
                 seekToProgress(it.toInt())
                 return@OnPlayClickListener true
@@ -94,55 +97,56 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
 
     private fun setupViews() {
 
-    binding.saveFab.accentColor()
+        binding.saveFab.accentColor()
 
-    val currentContent =
-        if (lyricsType == LyricsType.SYNCED_LYRICS) {
-            LyricUtil.getStringFromLrc(
-                LyricUtil.getSyncedLyricsFile(song)
-            ) ?: getEmbeddedLyricsText()
-        } else {
-            getEmbeddedLyricsText()
+        val currentContent =
+            if (lyricsType == LyricsType.SYNCED_LYRICS) {
+                LyricUtil.getStringFromLrc(
+                    LyricUtil.getSyncedLyricsFile(song)
+                ) ?: getEmbeddedLyricsText()
+            } else {
+                getEmbeddedLyricsText()
+            }
+
+        if (binding.etLyrics.text.isNullOrEmpty()) {
+            binding.etLyrics.setText(currentContent)
         }
 
-    if (binding.etLyrics.text.isNullOrEmpty()) {
-        binding.etLyrics.setText(currentContent)
-    }
+        binding.saveFab.setOnClickListener {
+            val lyricsText = binding.etLyrics.text.toString()
+            val songFile = File(song.data)
+            val lrcFile = File(songFile.parentFile, songFile.nameWithoutExtension + ".lrc")
 
-binding.saveFab.setOnClickListener {
-        val lyricsText = binding.etLyrics.text.toString()
-        val songFile = File(song.data)
-        val lrcFile = File(songFile.parentFile, songFile.nameWithoutExtension + ".lrc")
+            try {
+                // Con el permiso MANAGE_EXTERNAL_STORAGE, esto funcionará en cualquier carpeta.
+                lrcFile.writeText(lyricsText, Charsets.UTF_8)
 
-        try {
-            // Con el permiso MANAGE_EXTERNAL_STORAGE, esto funcionará en cualquier carpeta.
-            lrcFile.writeText(lyricsText, Charsets.UTF_8)
-            
-            lyricsType = LyricsType.SYNCED_LYRICS
-            
-            // 4. Recargamos la vista de letras
-            binding.lyricsView.loadLrc(lrcFile)
+                lyricsType = LyricsType.SYNCED_LYRICS
 
-            Toast.makeText(requireContext(), "Guardado exitosamente", Toast.LENGTH_SHORT).show()
+                // 4. Recargamos la vista de letras
+                binding.lyricsView.loadLrc(lrcFile)
 
-        } catch (e: Exception) {
-            e.printStackTrace()
-            // Si llegara a fallar (por ejemplo, si el usuario no concedió el permiso),
-            // notificamos con un mensaje claro.
-            Toast.makeText(
-                requireContext(), 
-                "Error al guardar: ${e.localizedMessage}. Asegúrate de haber concedido el acceso a archivos.", 
-                Toast.LENGTH_LONG
-            ).show()
+                Toast.makeText(requireContext(), "Guardado exitosamente", Toast.LENGTH_SHORT).show()
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                // Si llegara a fallar (por ejemplo, si el usuario no concedió el permiso),
+                // notificamos con un mensaje claro.
+                Toast.makeText(
+                    requireContext(),
+                    "Error al guardar: ${e.localizedMessage}. Asegúrate de haber concedido el acceso a archivos.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
-}
 
     private fun setupSincroControls() {
         val allButtons = listOf(
             binding.btnRew, binding.btnFwd, binding.btnMark, binding.btnPlayPause,
             binding.btnLeft, binding.btnRight, binding.btnUp, binding.btnDown,
-            binding.btnSrt, binding.btnLoadVideo, binding.btnHome, binding.btnEnd
+            binding.btnSrt, binding.btnLoadVideo, binding.btnHome, binding.btnEnd,
+            binding.btnBackspace, binding.btnSpace, binding.btnEnter, binding.btnToggleKeyboard
         )
         allButtons.forEach { view ->
             view.isFocusable = false
@@ -202,29 +206,92 @@ binding.saveFab.setOnClickListener {
         binding.btnDown.setOnClickListener { moveCursorLine(1); binding.etLyrics.requestFocus() }
         binding.btnHome.setOnClickListener { moveCursorToLineStart() }
         binding.btnEnd.setOnClickListener { moveCursorToLineEnd() }
-     }
+
+        binding.btnBackspace.setOnClickListener { deleteBeforeCursor() }
+        binding.btnSpace.setOnClickListener { insertAtCursor(" ") }
+        binding.btnEnter.setOnClickListener { insertAtCursor("\n") }
+        binding.btnToggleKeyboard.setOnClickListener { toggleKeyboard() }
+
+        // Si el usuario toca el texto directamente, el sistema muestra el teclado por su cuenta:
+        // sincronizamos la bandera para que el botón de toggle sepa el estado real.
+        binding.etLyrics.setOnTouchListener { v, event ->
+            if (event.action == MotionEvent.ACTION_UP) isKeyboardVisible = true
+            v.performClick()
+            false
+        }
+    }
+
+    /**
+     * Inserta texto en la posición actual del cursor (o reemplaza la selección si hay una)
+     * sin perder la posición: el cursor queda justo después de lo insertado.
+     */
+    private fun insertAtCursor(text: String) {
+        val editable = binding.etLyrics.text ?: return
+        val start = binding.etLyrics.selectionStart.coerceAtLeast(0)
+        val end = binding.etLyrics.selectionEnd.coerceAtLeast(0)
+        editable.replace(minOf(start, end), maxOf(start, end), text)
+        binding.etLyrics.setSelection(minOf(start, end) + text.length)
+        binding.etLyrics.requestFocus()
+    }
+
+    /**
+     * Borra el carácter anterior al cursor (o la selección completa si hay una),
+     * igual que la tecla backspace del teclado.
+     */
+    private fun deleteBeforeCursor() {
+        val editable = binding.etLyrics.text ?: return
+        val start = binding.etLyrics.selectionStart.coerceAtLeast(0)
+        val end = binding.etLyrics.selectionEnd.coerceAtLeast(0)
+
+        if (start != end) {
+            // Hay selección: borrar el rango seleccionado
+            editable.delete(minOf(start, end), maxOf(start, end))
+            binding.etLyrics.setSelection(minOf(start, end))
+        } else if (start > 0) {
+            // Sin selección: borrar el carácter anterior
+            editable.delete(start - 1, start)
+            binding.etLyrics.setSelection(start - 1)
+        }
+        binding.etLyrics.requestFocus()
+    }
+
+    /**
+     * Muestra u oculta el teclado sin tocar la posición del cursor
+     * (a diferencia de tocar el EditText directamente, que reposiciona el cursor
+     * en el punto donde se toca la pantalla).
+     */
+    private fun toggleKeyboard() {
+        val imm = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        binding.etLyrics.requestFocus()
+        if (isKeyboardVisible) {
+            imm.hideSoftInputFromWindow(binding.etLyrics.windowToken, 0)
+        } else {
+            imm.showSoftInput(binding.etLyrics, InputMethodManager.SHOW_IMPLICIT)
+        }
+        isKeyboardVisible = !isKeyboardVisible
+    }
 
     private fun moveCursorToLineStart() {
-    val pos = binding.etLyrics.selectionStart
-    val text = binding.etLyrics.text.toString()
-    if (text.isEmpty()) return
+        val pos = binding.etLyrics.selectionStart
+        val text = binding.etLyrics.text.toString()
+        if (text.isEmpty()) return
 
-    val currentLineStart = text.lastIndexOf("\n", pos - 1) + 1
-    binding.etLyrics.setSelection(currentLineStart)
-    binding.etLyrics.requestFocus()
-}
+        val currentLineStart = text.lastIndexOf("\n", pos - 1) + 1
+        binding.etLyrics.setSelection(currentLineStart)
+        binding.etLyrics.requestFocus()
+    }
 
-private fun moveCursorToLineEnd() {
-    val pos = binding.etLyrics.selectionStart
-    val text = binding.etLyrics.text.toString()
-    if (text.isEmpty()) return
+    private fun moveCursorToLineEnd() {
+        val pos = binding.etLyrics.selectionStart
+        val text = binding.etLyrics.text.toString()
+        if (text.isEmpty()) return
 
-    var currentLineEnd = text.indexOf("\n", pos)
-    if (currentLineEnd == -1) currentLineEnd = text.length
+        var currentLineEnd = text.indexOf("\n", pos)
+        if (currentLineEnd == -1) currentLineEnd = text.length
 
-    binding.etLyrics.setSelection(currentLineEnd)
-    binding.etLyrics.requestFocus()
-}
+        binding.etLyrics.setSelection(currentLineEnd)
+        binding.etLyrics.requestFocus()
+    }
 
     private fun seekToProgress(ms: Int) {
         currentProgressMillis = ms
@@ -246,7 +313,7 @@ private fun moveCursorToLineEnd() {
         isVideoLoaded = true
         binding.videoContainer.visibility = View.VISIBLE
         binding.videoView.setVideoURI(uri)
-        
+
         binding.videoView.setOnPreparedListener { mp ->
             binding.videoView.seekTo(1)
             currentProgressMillis = 0
@@ -262,53 +329,53 @@ private fun moveCursorToLineEnd() {
             currentProgressMillis = pos
             binding.tvCurrentTime.text = formatTimeLrc(pos)
             binding.lyricsView.updateTime(pos.toLong())
-            
+
             binding.tvCurrentTime.postDelayed({ updateVideoTimerLoop() }, 100)
         }
     }
 
     private fun handleMarking() {
 
-    val pos = binding.etLyrics.selectionStart
+        val pos = binding.etLyrics.selectionStart
 
-    val text = binding.etLyrics.text.toString()
-        .replace("\r\n", "\n")
-        .replace("\r", "\n")
+        val text = binding.etLyrics.text.toString()
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
 
-    if (text.isEmpty()) return
+        if (text.isEmpty()) return
 
-    val lineStart = text.lastIndexOf("\n", pos - 1) + 1
+        val lineStart = text.lastIndexOf("\n", pos - 1) + 1
 
-    var lineEnd = text.indexOf("\n", pos)
-    if (lineEnd == -1) lineEnd = text.length
+        var lineEnd = text.indexOf("\n", pos)
+        if (lineEnd == -1) lineEnd = text.length
 
-    val fullLine = text.substring(lineStart, lineEnd)
+        val fullLine = text.substring(lineStart, lineEnd)
 
-    // Eliminar TODOS los timestamps existentes
-    val cleanLine = fullLine
-        .replace("\\[[^\\]]+\\]".toRegex(), "")
-        .trim()
+        // Eliminar TODOS los timestamps existentes
+        val cleanLine = fullLine
+            .replace("\\[[^\\]]+\\]".toRegex(), "")
+            .trim()
 
-    val timeStamp = formatTimeLrc(currentProgressMillis)
+        val timeStamp = formatTimeLrc(currentProgressMillis)
 
-    val newLine = "$timeStamp $cleanLine"
+        val newLine = "$timeStamp $cleanLine"
 
-    val updatedText =
-        text.substring(0, lineStart) +
-        newLine +
-        text.substring(lineEnd)
+        val updatedText =
+            text.substring(0, lineStart) +
+                    newLine +
+                    text.substring(lineEnd)
 
-    binding.etLyrics.setText(updatedText)
+        binding.etLyrics.setText(updatedText)
 
-    // Avanzar SIEMPRE a la siguiente línea
-    val nextLineStart = updatedText.indexOf('\n', lineStart)
+        // Avanzar SIEMPRE a la siguiente línea
+        val nextLineStart = updatedText.indexOf('\n', lineStart)
 
-    if (nextLineStart != -1) {
-        binding.etLyrics.setSelection(nextLineStart + 1)
-    } else {
-        binding.etLyrics.setSelection(updatedText.length)
+        if (nextLineStart != -1) {
+            binding.etLyrics.setSelection(nextLineStart + 1)
+        } else {
+            binding.etLyrics.setSelection(updatedText.length)
+        }
     }
-}
 
     private fun exportToSrtFile() {
         try {
@@ -424,39 +491,39 @@ private fun moveCursorToLineEnd() {
 
     private fun loadLyrics() {
 
-    val lrcFile = LyricUtil.getSyncedLyricsFile(song)
+        val lrcFile = LyricUtil.getSyncedLyricsFile(song)
 
-    when {
+        when {
 
-        lrcFile != null && lrcFile.exists() -> {
+            lrcFile != null && lrcFile.exists() -> {
 
-            binding.lyricsView.loadLrc(lrcFile)
+                binding.lyricsView.loadLrc(lrcFile)
 
-            try {
-                binding.etLyrics.setText(lrcFile.readText())
-            } catch (e: Exception) {
-                binding.etLyrics.setText("")
+                try {
+                    binding.etLyrics.setText(lrcFile.readText())
+                } catch (e: Exception) {
+                    binding.etLyrics.setText("")
+                }
+
+                lyricsType = LyricsType.SYNCED_LYRICS
             }
 
-            lyricsType = LyricsType.SYNCED_LYRICS
+            else -> {
+
+                binding.etLyrics.setText("")
+
+                lyricsType = LyricsType.NORMAL_LYRICS
+
+                Toast.makeText(
+                    requireContext(),
+                    "No existe archivo LRC. Puedes crear uno manualmente.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
 
-        else -> {
-
-            binding.etLyrics.setText("")
-
-            lyricsType = LyricsType.NORMAL_LYRICS
-
-            Toast.makeText(
-                requireContext(),
-                "No existe archivo LRC. Puedes crear uno manualmente.",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
-
-    binding.etLyrics.isVisible = true
-    binding.normalLyrics.isVisible = false
+        binding.etLyrics.isVisible = true
+        binding.normalLyrics.isVisible = false
     }
 
     private fun updateTitleSong() { song = MusicPlayerRemote.currentSong }
@@ -484,5 +551,5 @@ private fun moveCursorToLineEnd() {
     override fun onDestroyView() { _binding = null; super.onDestroyView() }
 
     enum class LyricsType { NORMAL_LYRICS, SYNCED_LYRICS }
-    }
-    
+}
+

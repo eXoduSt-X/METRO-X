@@ -17,6 +17,7 @@ import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.drawable.Drawable
 import android.os.Looper
@@ -59,6 +60,7 @@ class CoverLrcView @JvmOverloads constructor(
     private var mNormalTextSize = 0f
     private var mCurrentTextColor = 0
     private var mCurrentTextSize = 0f
+    private var mPreviousLineTextColor = Color.YELLOW
     private var mTimelineTextColor = 0
     private var mTimelineColor = 0
     private var mTimeTextColor = 0
@@ -259,6 +261,11 @@ class CoverLrcView @JvmOverloads constructor(
         postInvalidate()
     }
 
+    fun setPreviousLineColor(previousLineColor: Int) {
+        mPreviousLineTextColor = previousLineColor
+        postInvalidate()
+    }
+
     fun setTimelineTextColor(timelineTextColor: Int) {
         mTimelineTextColor = timelineTextColor
         postInvalidate()
@@ -387,6 +394,9 @@ class CoverLrcView @JvmOverloads constructor(
                 mLrcPaint.color = mCurrentTextColor
             } else if (isShowTimeline && i == centerLine) {
                 mLrcPaint.color = mTimelineTextColor
+            } else if (i == mCurrentLine - 1) {
+                mLrcPaint.textSize = mNormalTextSize
+                mLrcPaint.color = mPreviousLineTextColor
             } else {
                 mLrcPaint.textSize = mNormalTextSize
                 mLrcPaint.color = mNormalTextColor

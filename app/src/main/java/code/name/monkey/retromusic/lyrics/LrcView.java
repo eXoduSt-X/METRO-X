@@ -64,6 +64,7 @@ public class LrcView extends View {
     private float mNormalTextSize;
     private int mCurrentTextColor;
     private float mCurrentTextSize;
+    private int mPreviousLineTextColor = android.graphics.Color.parseColor("#FFEB3B");
     private int mTimelineTextColor;
     private int mTimelineColor;
     private int mTimeTextColor;
@@ -254,6 +255,15 @@ public class LrcView extends View {
 
     public void setCurrentColor(int currentColor) {
         mCurrentTextColor = currentColor;
+        postInvalidate();
+    }
+
+    /**
+     * Color de la línea inmediatamente anterior a la línea actual
+     * (la que queda arriba, ya que la línea actual se centra por scroll).
+     */
+    public void setPreviousLineColor(int previousLineColor) {
+        mPreviousLineTextColor = previousLineColor;
         postInvalidate();
     }
 
@@ -453,6 +463,9 @@ public class LrcView extends View {
                 mLrcPaint.setColor(mCurrentTextColor);
             } else if (isShowTimeline && i == centerLine) {
                 mLrcPaint.setColor(mTimelineTextColor);
+            } else if (i == mCurrentLine - 1) {
+                mLrcPaint.setTextSize(mNormalTextSize);
+                mLrcPaint.setColor(mPreviousLineTextColor);
             } else {
                 mLrcPaint.setTextSize(mNormalTextSize);
                 mLrcPaint.setColor(mNormalTextColor);

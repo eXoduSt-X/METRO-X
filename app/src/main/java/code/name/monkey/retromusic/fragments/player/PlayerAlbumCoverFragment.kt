@@ -206,11 +206,12 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
 
     private fun setLRCViewColors(@ColorInt primaryColor: Int, @ColorInt secondaryColor: Int) {
         lrcView.apply {
-            setCurrentColor(primaryColor)
-            setTimeTextColor(primaryColor)
-            setTimelineColor(primaryColor)
+            setCurrentColor(android.graphics.Color.YELLOW)
+            setTimeTextColor(android.graphics.Color.YELLOW)
+            setTimelineColor(android.graphics.Color.YELLOW)
             setNormalColor(secondaryColor)
-            setTimelineTextColor(primaryColor)
+            setTimelineTextColor(android.graphics.Color.YELLOW)
+            setPreviousLineColor(primaryColor)
         }
     }
 

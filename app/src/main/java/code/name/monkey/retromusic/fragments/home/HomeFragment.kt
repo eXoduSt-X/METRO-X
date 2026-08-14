@@ -897,20 +897,29 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     }
 
     private fun setPlayPauseIcon(isPlaying: Boolean) {
-        val sizePx = (18 * resources.displayMetrics.density).toInt()
+        val sizePx = (18 * resources.displayMetrics.density).toInt() 
         val drawableRes = if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play_arrow
         val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
         icon?.setBounds(0, 0, sizePx, sizePx)
+        
+        binding.homeContent.btnPlayPause.text = null 
         binding.homeContent.btnPlayPause.setCompoundDrawables(null, icon, null, null)
-        binding.homeContent.btnPlayPause.compoundDrawablePadding = (2 * resources.displayMetrics.density).toInt()
-        binding.homeContent.btnPlayPause.setAllCaps(false)
-        binding.homeContent.btnPlayPause.text = if (isPlaying) getString(R.string.pause) else getString(R.string.play)
+        binding.homeContent.btnPlayPause.gravity = android.view.Gravity.CENTER
+        binding.homeContent.btnPlayPause.setPadding(0, 0, 0, 0)
+        binding.homeContent.btnPlayPause.compoundDrawablePadding = 0
+        
+        // Forzar centrado vertical exacto
+        binding.homeContent.btnPlayPause.post {
+            val verticalPad = ((binding.homeContent.btnPlayPause.height - sizePx) / 2).coerceAtLeast(0)
+            binding.homeContent.btnPlayPause.setPadding(0, verticalPad, 0, verticalPad)
+        }
     }
 
  private fun setFixedIcon(
     button: android.widget.Button,
     drawableRes: Int,
     widthDp: Int = 18,
+<<<<<<< HEAD
     heightDp: Int = widthDp,
     topPaddingDp: Int = 4 // nuevo: aire entre el borde superior y el icono
 ) {
@@ -926,16 +935,49 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         button.gravity = android.view.Gravity.CENTER_HORIZONTAL
         button.setPadding(0, 0, 0, 0)
 
+=======
+    heightDp: Int = widthDp
+) {
+    val density = resources.displayMetrics.density
+    val widthPx = (widthDp * density).toInt()
+    val heightPx = (heightDp * density).toInt()
+    val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
+    icon?.setBounds(0, 0, widthPx, heightPx)
+
+    button.setAllCaps(false)
+    button.maxLines = 1 
+    if (button.text.isNullOrEmpty()) {
+        button.text = null
+        button.setCompoundDrawables(null, icon, null, null)
+        button.gravity = android.view.Gravity.CENTER
+        button.setPadding(0, 0, 0, 0)
+        button.compoundDrawablePadding = 0
+        
+        // Forzar centrado vertical exacto para botones sin texto (YouTube)
+>>>>>>> 0057016 (Refactor UI: Compact layout, optimized video controls, centered YouTube icon, and enhanced lyrics coloring (Yellow/Accent logic))
         button.post {
             val verticalPad = ((button.height - heightPx) / 2).coerceAtLeast(0)
             button.setPadding(0, verticalPad, 0, verticalPad)
         }
     } else {
+<<<<<<< HEAD
         button.setCompoundDrawables(null, icon, null, null)
         button.compoundDrawablePadding = (2 * resources.displayMetrics.density).toInt()
         button.setPadding(button.paddingLeft, topPaddingPx, button.paddingRight, button.paddingBottom)
     }
     button.setAllCaps(false)
+=======
+        // Icono arriba, Texto abajo
+        button.setCompoundDrawables(null, icon, null, null)
+        // Espaciado: ~4px arriba (1.5dp), ~2px gap (0.8dp)
+        val topPaddingPx = (1.5 * density).toInt() 
+        val gapPx = (0.8 * density).toInt()
+        
+        button.compoundDrawablePadding = gapPx
+        button.setPadding(0, topPaddingPx, 0, 0)
+        button.gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
+    }
+>>>>>>> 0057016 (Refactor UI: Compact layout, optimized video controls, centered YouTube icon, and enhanced lyrics coloring (Yellow/Accent logic))
 }
 
     private fun adjustPlaylistButtons() {
