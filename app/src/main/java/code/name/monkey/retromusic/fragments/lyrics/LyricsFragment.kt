@@ -31,6 +31,8 @@ import java.io.PrintWriter
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
 
 class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
     MusicProgressViewUpdateHelper.Callback {
@@ -38,6 +40,7 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
     private var _binding: FragmentLyricsBinding? = null
     private val binding get() = _binding!!
     private lateinit var song: Song
+    private var exoPlayer: ExoPlayer? = null
 
     private var lyricsType: LyricsType = LyricsType.NORMAL_LYRICS
     private var currentProgressMillis: Int = 0
@@ -155,13 +158,15 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
 
         binding.btnPlayPause.setOnClickListener {
             if (isVideoLoaded) {
-                if (binding.videoView.isPlaying) {
-                    binding.videoView.pause()
-                    binding.btnPlayPause.text = "Play"
-                } else {
-                    binding.videoView.start()
-                    binding.btnPlayPause.text = "Pause"
-                    updateVideoTimerLoop()
+                exoPlayer?.let { player ->
+                    if (player.isPlaying) {
+                        player.pause()
+                        binding.btnPlayPause.text = "Play"
+                    } else {
+                        player.play()
+                        binding.btnPlayPause.text = "Pause"
+                        updateVideoTimerLoop()
+                    }
                 }
             } else {
                 if (MusicPlayerRemote.isPlaying) MusicPlayerRemote.pauseSong() else MusicPlayerRemote.resumePlaying()
@@ -175,7 +180,7 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
         }
 
         binding.btnFwd.setOnClickListener {
-            val totalDuration = if (isVideoLoaded) binding.videoView.duration else MusicPlayerRemote.songDurationMillis
+            val totalDuration = if (isVideoLoaded) exoPlayer?.duration?.toInt() ?: 0 else MusicPlayerRemote.songDurationMillis
             val newPos = min(currentProgressMillis + 5000, totalDuration)
             seekToProgress(newPos)
         }
@@ -296,7 +301,7 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
     private fun seekToProgress(ms: Int) {
         currentProgressMillis = ms
         if (isVideoLoaded) {
-            binding.videoView.seekTo(ms)
+            exoPlayer?.seekTo(ms.toLong())
             binding.tvCurrentTime.text = formatTimeLrc(ms)
             binding.lyricsView.updateTime(ms.toLong())
         } else {
@@ -312,10 +317,17 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
         }
         isVideoLoaded = true
         binding.videoContainer.visibility = View.VISIBLE
-        binding.videoView.setVideoURI(uri)
 
-        binding.videoView.setOnPreparedListener { mp ->
-            binding.videoView.seekTo(1)
+        if (exoPlayer == null) {
+            exoPlayer = ExoPlayer.Builder(requireContext()).build().also {
+                binding.videoView.player = it
+            }
+        }
+
+        exoPlayer?.apply {
+            setMediaItem(MediaItem.fromUri(uri))
+            prepare()
+            seekTo(1)
             currentProgressMillis = 0
             binding.tvCurrentTime.text = formatTimeLrc(0)
             binding.btnPlayPause.text = "Play"
@@ -324,13 +336,15 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
     }
 
     private fun updateVideoTimerLoop() {
-        if (isVideoLoaded && binding.videoView.isPlaying) {
-            val pos = binding.videoView.currentPosition
-            currentProgressMillis = pos
-            binding.tvCurrentTime.text = formatTimeLrc(pos)
-            binding.lyricsView.updateTime(pos.toLong())
+        exoPlayer?.let { player ->
+            if (isVideoLoaded && player.isPlaying) {
+                val pos = player.currentPosition.toInt()
+                currentProgressMillis = pos
+                binding.tvCurrentTime.text = formatTimeLrc(pos)
+                binding.lyricsView.updateTime(pos.toLong())
 
-            binding.tvCurrentTime.postDelayed({ updateVideoTimerLoop() }, 100)
+                binding.tvCurrentTime.postDelayed({ updateVideoTimerLoop() }, 100)
+            }
         }
     }
 
@@ -399,7 +413,7 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
                         endMs = lrcTimeToMs(lines[i + 1].trim().substring(0, 10))
                     } else {
                         endMs = startMs + 4000
-                        val maxDuration = if (isVideoLoaded) binding.videoView.duration else MusicPlayerRemote.songDurationMillis
+                        val maxDuration = if (isVideoLoaded) exoPlayer?.duration?.toInt() ?: 0 else MusicPlayerRemote.songDurationMillis
                         if (maxDuration > 0 && endMs > maxDuration) {
                             endMs = maxDuration
                         }
@@ -548,7 +562,12 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
 
     override fun onResume() { super.onResume(); updateTitleSong(); updateHelper.start() }
     override fun onPause() { super.onPause(); updateHelper.stop() }
-    override fun onDestroyView() { _binding = null; super.onDestroyView() }
+    override fun onDestroyView() {
+        exoPlayer?.release()
+        exoPlayer = null
+        _binding = null
+        super.onDestroyView()
+    }
 
     enum class LyricsType { NORMAL_LYRICS, SYNCED_LYRICS }
 }

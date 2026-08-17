@@ -20,7 +20,6 @@ import android.provider.OpenableColumns
 import android.util.Log
 import android.view.*
 import android.widget.SeekBar
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -38,7 +37,11 @@ import androidx.core.view.doOnPreDraw
 import androidx.core.view.updateLayoutParams
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import android.widget.TextView
+import java.util.Collections
 import code.name.monkey.appthemehelper.common.ATHToolbarActivity
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
 import code.name.monkey.retromusic.*
@@ -58,6 +61,9 @@ import com.google.android.material.transition.MaterialFadeThrough
 import com.google.android.material.transition.MaterialSharedAxis
 import java.io.File
 import java.io.FileOutputStream
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import java.util.Locale
 
 data class Subtitle(val startTime: Long, val endTime: Long, val original: String, val translation: String?)
@@ -67,6 +73,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
     private var savedPosition: Int = 0
+    private var exoPlayer: ExoPlayer? = null
     private var wasPlayingBeforePause = false
     private var selectedFolderUri: Uri? = null
     private val videoPlaylist = mutableListOf<Uri>()
@@ -104,11 +111,10 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     private val updateSubtitleTask = object : Runnable {
         override fun run() {
-            val player = _binding?.homeContent?.videoPlayer
-            if (player != null) {
-                val currentPos = player.currentPosition
+            exoPlayer?.let { player ->
+                val currentPos = player.currentPosition.toInt()
                 val currentSub = subtitleList.find { currentPos.toLong() in it.startTime..it.endTime }
-                
+
                 if (currentSub != null) {
                     _binding?.homeContent?.tvSubtitleOverlay?.let { tv ->
                         val subText = if (currentSub.translation != null) {
@@ -135,10 +141,10 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 }
 
                 if (player.isPlaying) {
-                    binding.homeContent.videoSeekBar.max = player.duration
+                    binding.homeContent.videoSeekBar.max = player.duration.toInt()
                     binding.homeContent.videoSeekBar.progress = currentPos
                     binding.homeContent.tvCurrentTime.text = formatTime(currentPos)
-                    binding.homeContent.tvTotalTime.text = formatTime(player.duration)
+                    binding.homeContent.tvTotalTime.text = formatTime(player.duration.toInt())
                 }
             }
             handler.postDelayed(this, 250)
@@ -203,23 +209,127 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             .show()
     }
 
-    private fun mostrarDialogoUnirVideos(uris: List<Uri>) {
-        val nombres = uris.map { uri ->
-            requireContext().contentResolver.query(
-                uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
-            )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else uri.lastPathSegment ?: "Video" } ?: "Video"
+    private fun getBetterName(uri: Uri): String {
+        var name: String? = null
+        val context = requireContext()
+        val resolver = context.contentResolver
+        
+        // 1. Obtener tamaño del URI para búsqueda cruzada
+        var uriSize = 0L
+        try {
+            resolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) uriSize = cursor.getLong(0)
+            }
+        } catch (e: Exception) {}
+
+        // 2. Intentar por MediaStore (Búsqueda en base de datos real)
+        val projection = arrayOf(
+            MediaStore.Video.Media.DISPLAY_NAME, 
+            MediaStore.Video.Media.TITLE,
+            MediaStore.Video.Media.DATA
+        )
+        try {
+            resolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val displayName = cursor.getString(0) ?: ""
+                    val title = cursor.getString(1) ?: ""
+                    val path = cursor.getString(2) ?: ""
+                    
+                    // Si el nombre es numérico pero el Título tiene texto real, usamos el título
+                    name = if (displayName.matches(Regex("^\\d+\\..*")) && title.isNotBlank() && !title.matches(Regex("^\\d+$"))) {
+                        if (title.contains(".")) title else "$title.mp4"
+                    } else {
+                        displayName
+                    }
+                    
+                    // Si sigue siendo numérico, intentamos con la ruta física
+                    if (name!!.matches(Regex("^\\d+\\..*")) && path.isNotBlank()) {
+                        val file = File(path)
+                        if (file.exists() && !file.name.matches(Regex("^\\d+\\..*"))) {
+                            name = file.name
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {}
+
+        // 3. SOLUCIÓN PARA XIAOMI: Si es numérico, buscamos en la carpeta "0 VIDEO" por coincidencia de tamaño
+        if (name == null || name!!.matches(Regex("^\\d+\\..*"))) {
+            val youtubeFolder = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "0 VIDEO")
+            if (youtubeFolder.exists() && uriSize > 0) {
+                // Buscamos un archivo que pese exactamente lo mismo en nuestra carpeta de trabajo
+                youtubeFolder.listFiles()?.find { it.length() == uriSize }?.let {
+                    name = it.name
+                }
+            }
         }
 
-        val listaTexto = nombres.mapIndexed { i, nombre -> "${i + 1}. $nombre" }.joinToString("\n")
+        // 4. Último recurso: DocumentFile o segmento de URI
+        if (name == null || name!!.matches(Regex("^\\d+\\..*"))) {
+            try {
+                val doc = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)
+                name = doc?.name
+            } catch (e: Exception) {}
+        }
+
+        return name ?: uri.lastPathSegment ?: "Video_Editor.mp4"
+    }
+
+    private fun mostrarDialogoUnirVideos(uris: List<Uri>) {
+        val videoItems = uris.map { uri ->
+            val name = getBetterName(uri)
+            val doc = androidx.documentfile.provider.DocumentFile.fromSingleUri(requireContext(), uri)
+            val size = doc?.length() ?: 0L
+            val sizeMb = "%.2f MB".format(size / (1024.0 * 1024.0))
+            MergeVideoItem(uri, name, sizeMb)
+        }.toMutableList()
+
+        val recyclerView = RecyclerView(requireContext()).apply {
+            layoutManager = LinearLayoutManager(requireContext())
+            setPadding(0, 12, 0, 12)
+            clipToPadding = false
+        }
+        
+        val adapter = MergeVideoAdapter(videoItems)
+        recyclerView.adapter = adapter
+
+        val touchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {
+            override fun onMove(rv: RecyclerView, vh: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
+                val from = vh.bindingAdapterPosition
+                val to = target.bindingAdapterPosition
+                Collections.swap(videoItems, from, to)
+                adapter.notifyItemMoved(from, to)
+                return true
+            }
+            override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {}
+        })
+        touchHelper.attachToRecyclerView(recyclerView)
 
         AlertDialog.Builder(requireContext())
-            .setTitle(getString(R.string.unir_videos_title, uris.size))
-            .setMessage(getString(R.string.unir_videos_message, listaTexto))
-            .setPositiveButton(R.string.action_set) { _, _ ->
-                unirVideos(uris)
+            .setTitle("Reordenar Videos para Unir")
+            .setView(recyclerView)
+            .setPositiveButton("UNIR") { _, _ ->
+                unirVideos(videoItems.map { it.uri })
             }
             .setNegativeButton(R.string.action_cancel, null)
             .show()
+    }
+
+    data class MergeVideoItem(val uri: Uri, val name: String, val details: String)
+
+    inner class MergeVideoAdapter(private val items: List<MergeVideoItem>) : RecyclerView.Adapter<MergeVideoAdapter.ViewHolder>() {
+        inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) {
+            val tvName: TextView = v.findViewById(R.id.tvFilename)
+            val tvDetails: TextView = v.findViewById(R.id.tvDetails)
+        }
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = 
+            ViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_batch_song, parent, false))
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            val item = items[position]
+            holder.tvName.text = item.name
+            holder.tvDetails.text = item.details
+        }
+        override fun getItemCount() = items.size
     }
 
     private fun mostrarSelectorCalidad(uris: List<Uri>) {
@@ -361,6 +471,26 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
     }
 
+    private fun loadVideosFromDirectory(directory: File) {
+        downloadVideoList.clear()
+        directory.listFiles()?.forEach { file ->
+            if (file.isFile && isVideoFile(file)) {
+                downloadVideoList.add(Pair(file.name, Uri.fromFile(file)))
+            }
+        }
+        binding.homeContent.rvDownloads.adapter = DownloadVideoAdapter(downloadVideoList) { clickedUri ->
+            videoPlaylist.clear()
+            videoPlaylist.addAll(downloadVideoList.map { it.second })
+            currentIndex = downloadVideoList.indexOfFirst { it.second == clickedUri }.coerceAtLeast(0)
+            reproducirVideoActual()
+        }
+    }
+
+    private fun isVideoFile(file: File): Boolean {
+        val extensions = arrayOf("mp4", "mkv", "avi", "mov", "flv", "wmv", "webm")
+        return extensions.any { file.extension.lowercase() == it }
+    }
+
     private fun loadVideosFromSelectedFolder(uri: Uri) {
         downloadVideoList.clear()
         val pickedDir = androidx.documentfile.provider.DocumentFile.fromTreeUri(requireContext(), uri)
@@ -419,7 +549,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 Manifest.permission.READ_EXTERNAL_STORAGE
             }
             if (ContextCompat.checkSelfPermission(requireContext(), permission) == PackageManager.PERMISSION_GRANTED) {
-                loadVideosFromDownloads()
+                val youtubeFolder = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "0 VIDEO")
+                if (!youtubeFolder.exists()) youtubeFolder.mkdirs()
+                loadVideosFromDirectory(youtubeFolder)
             } else {
                 requestPermissionLauncher.launch(permission)
             }
@@ -428,6 +560,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         binding.homeContent.tvSubtitleOverlay.setShadowLayer(3f, 2f, 2f, Color.BLACK)
         handler.post(updateSubtitleTask)
         setupListeners()
+        initializePlayer()
         setupVideoListeners()
 
         setFixedIcon(binding.homeContent.btnPrevVideo, R.drawable.ic_skip_previous)
@@ -452,7 +585,20 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
         fullscreenGestureDetector = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                toggleFullscreen()
+                val width = binding.homeContent.videoContainer.width
+                val x = e.x
+                if (x < width * 0.35) {
+                    // Doble toque Izquierda: Retroceder 7s
+                    exoPlayer?.let { it.seekTo((it.currentPosition - 7000).coerceAtLeast(0)) }
+                    Toast.makeText(requireContext(), "-7s", Toast.LENGTH_SHORT).show()
+                } else if (x > width * 0.65) {
+                    // Doble toque Derecha: Adelantar 7s
+                    exoPlayer?.let { it.seekTo((it.currentPosition + 7000).coerceAtMost(it.duration)) }
+                    Toast.makeText(requireContext(), "+7s", Toast.LENGTH_SHORT).show()
+                } else {
+                    // Doble toque Centro: Pantalla Completa
+                    toggleFullscreen()
+                }
                 return true
             }
         })
@@ -475,6 +621,26 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         view.doOnLayout { adjustPlaylistButtons() }
     }
 
+    private fun initializePlayer() {
+        if (exoPlayer == null) {
+            exoPlayer = ExoPlayer.Builder(requireContext()).build().also { player ->
+                binding.homeContent.videoPlayer.player = player
+                player.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_READY) {
+                            binding.homeContent.videoSeekBar.max = player.duration.toInt()
+                            binding.homeContent.tvTotalTime.text = formatTime(player.duration.toInt())
+                        }
+                    }
+
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        setPlayPauseIcon(isPlaying)
+                    }
+                })
+            }
+        }
+    }
+
     private fun setupVideoListeners() {
         binding.homeContent.btnOpenFile.setOnClickListener { videoPickerLauncher.launch("video/*") }
         binding.homeContent.btnLoadSubtitles.setOnClickListener { subtitlePickerLauncher.launch("*/*") }
@@ -484,28 +650,19 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
         binding.homeContent.videoSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) binding.homeContent.videoPlayer.seekTo(progress)
+                if (fromUser) exoPlayer?.seekTo(progress.toLong())
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
 
-        binding.homeContent.videoPlayer.setOnPreparedListener { mp ->
-            mp.seekTo(savedPosition)
-            mp.start()
-            binding.homeContent.videoSeekBar.max = mp.duration
-            binding.homeContent.tvTotalTime.text = formatTime(mp.duration)
-            setPlayPauseIcon(true)
-        }
-
         binding.homeContent.btnPlayPause.setOnClickListener {
-            val player = binding.homeContent.videoPlayer
-            if (player.isPlaying) {
-                player.pause()
-                setPlayPauseIcon(false)
-            } else {
-                player.start()
-                setPlayPauseIcon(true)
+            exoPlayer?.let { player ->
+                if (player.isPlaying) {
+                    player.pause()
+                } else {
+                    player.play()
+                }
             }
         }
         val longPressHandler = Handler(Looper.getMainLooper())
@@ -517,7 +674,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                     longPressTriggered = false
                     longPressHandler.postDelayed({
                         longPressTriggered = true
-                        binding.homeContent.videoPlayer.seekTo((binding.homeContent.videoPlayer.currentPosition - 5000).coerceAtLeast(0))
+                        exoPlayer?.let {
+                            it.seekTo((it.currentPosition - 5000).coerceAtLeast(0))
+                        }
                     }, 1000)
                 }
                 MotionEvent.ACTION_UP -> {
@@ -541,7 +700,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                     longPressTriggered = false
                     longPressHandler.postDelayed({
                         longPressTriggered = true
-                        binding.homeContent.videoPlayer.seekTo((binding.homeContent.videoPlayer.currentPosition + 5000).coerceAtMost(binding.homeContent.videoPlayer.duration))
+                        exoPlayer?.let {
+                            it.seekTo((it.currentPosition + 5000).coerceAtMost(it.duration))
+                        }
                     }, 1000)
                 }
                 MotionEvent.ACTION_UP -> {
@@ -577,10 +738,14 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
 
         binding.homeContent.btnSetStart.setOnClickListener {
-            binding.homeContent.etStartTime.setText(formatTime(binding.homeContent.videoPlayer.currentPosition))
+            exoPlayer?.let {
+                binding.homeContent.etStartTime.setText(formatTime(it.currentPosition.toInt()))
+            }
         }
         binding.homeContent.btnSetEnd.setOnClickListener {
-            binding.homeContent.etEndTime.setText(formatTime(binding.homeContent.videoPlayer.currentPosition))
+            exoPlayer?.let {
+                binding.homeContent.etEndTime.setText(formatTime(it.currentPosition.toInt()))
+            }
         }
         binding.homeContent.btnSplit.setOnClickListener {
             val startTime = binding.homeContent.etStartTime.text.toString()
@@ -658,42 +823,80 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         setUiVisibilityForFullscreen(isFullscreen)
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun setUiVisibilityForFullscreen(fullscreen: Boolean) {
         val visibility = if (fullscreen) View.GONE else View.VISIBLE
 
+        // Ocultar absolutamente todo lo que no sea el video
         binding.appBarLayout.visibility = visibility
+        binding.imageLayout.visibility = View.GONE // Siempre oculto para más espacio
         binding.homeContent.absPlaylists.root.visibility = visibility
         binding.homeContent.toolsRow.visibility = visibility
         binding.homeContent.cutRow.visibility = visibility
         binding.homeContent.extraActionsContainer.visibility = visibility
         binding.homeContent.rvDownloads.visibility = visibility
+        binding.homeContent.btnYoutubeDownload.visibility = visibility
+        
+        binding.homeContent.videoSeekBar.visibility = visibility
+        binding.homeContent.tvCurrentTime.parent.let { if (it is View) it.visibility = visibility }
+        binding.homeContent.btnPrevVideo.parent.let { if (it is View) it.visibility = visibility }
 
         val padding = if (fullscreen) 0 else (16 * resources.displayMetrics.density).toInt()
         binding.homeContent.contentPadding.setPadding(padding, padding, padding, padding)
 
+        // Forzar al contenedor del video a ser el nuevo "Padre" de la pantalla
         val videoParams = binding.homeContent.videoContainer.layoutParams
-        videoParams.height = if (fullscreen) {
-            (resources.displayMetrics.heightPixels * 0.35).toInt()
+        if (fullscreen) {
+            videoParams.height = ViewGroup.LayoutParams.MATCH_PARENT
+            videoParams.width = ViewGroup.LayoutParams.MATCH_PARENT
         } else {
-            (250 * resources.displayMetrics.density).toInt()
+            videoParams.height = (250 * resources.displayMetrics.density).toInt()
+            videoParams.width = ViewGroup.LayoutParams.MATCH_PARENT
         }
-        videoParams.width = ViewGroup.LayoutParams.MATCH_PARENT
         binding.homeContent.videoContainer.layoutParams = videoParams
 
+        // Fondo negro total para fundir con los marcos físicos
         binding.root.setBackgroundColor(if (fullscreen) Color.BLACK else "#1E1E1E".toColorInt())
         binding.homeContent.root.setBackgroundColor(if (fullscreen) Color.BLACK else "#1E1E1E".toColorInt())
 
-        binding.container.isNestedScrollingEnabled = !fullscreen
+        // ELIMINAR LA VENTANA: Quitamos el comportamiento de scroll y el offset del AppBar
+        val containerParams = binding.container.layoutParams as CoordinatorLayout.LayoutParams
+        if (fullscreen) {
+            containerParams.behavior = null
+            binding.root.fitsSystemWindows = false
+        } else {
+            containerParams.behavior = com.google.android.material.appbar.AppBarLayout.ScrollingViewBehavior()
+            binding.root.fitsSystemWindows = true
+        }
+        binding.container.layoutParams = containerParams
 
+        binding.container.isNestedScrollingEnabled = !fullscreen
+        binding.container.overScrollMode = if (fullscreen) View.OVER_SCROLL_NEVER else View.OVER_SCROLL_ALWAYS
+        
+        // Ajustar el comportamiento de estirado de ExoPlayer
+        binding.homeContent.videoPlayer.resizeMode = if (fullscreen) {
+            androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL 
+        } else {
+            androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
+
+        checkForMargins()
         binding.homeContent.videoContainer.requestLayout()
+        
+        if (fullscreen) {
+            scrollToTop()
+        }
     }
 
     private fun reproducirVideoActual() {
         if (videoPlaylist.isNotEmpty()) {
             clearSubtitles()
             savedPosition = 0
-            binding.homeContent.videoPlayer.setVideoURI(videoPlaylist[currentIndex])
-            binding.homeContent.videoPlayer.start()
+            exoPlayer?.apply {
+                setMediaItem(MediaItem.fromUri(videoPlaylist[currentIndex]))
+                prepare()
+                play()
+            }
             binding.homeContent.btnPlayPause.text = getString(R.string.pause)
         }
     }
@@ -915,70 +1118,43 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
     }
 
- private fun setFixedIcon(
-    button: android.widget.Button,
-    drawableRes: Int,
-    widthDp: Int = 18,
-<<<<<<< HEAD
-    heightDp: Int = widthDp,
-    topPaddingDp: Int = 4 // nuevo: aire entre el borde superior y el icono
-) {
-    val widthPx = (widthDp * resources.displayMetrics.density).toInt()
-    val heightPx = (heightDp * resources.displayMetrics.density).toInt()
-    val topPaddingPx = (topPaddingDp * resources.displayMetrics.density).toInt()
-    val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
-    icon?.setBounds(0, 0, widthPx, heightPx)
+    private fun setFixedIcon(
+        button: android.widget.Button,
+        drawableRes: Int,
+        widthDp: Int = 18,
+        heightDp: Int = widthDp
+    ) {
+        val density = resources.displayMetrics.density
+        val widthPx = (widthDp * density).toInt()
+        val heightPx = (heightDp * density).toInt()
+        val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
+        icon?.setBounds(0, 0, widthPx, heightPx)
 
-    if (button.text.isNullOrEmpty()) {
-        button.setCompoundDrawables(null, icon, null, null)
-        button.compoundDrawablePadding = 0
-        button.gravity = android.view.Gravity.CENTER_HORIZONTAL
-        button.setPadding(0, 0, 0, 0)
-
-=======
-    heightDp: Int = widthDp
-) {
-    val density = resources.displayMetrics.density
-    val widthPx = (widthDp * density).toInt()
-    val heightPx = (heightDp * density).toInt()
-    val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
-    icon?.setBounds(0, 0, widthPx, heightPx)
-
-    button.setAllCaps(false)
-    button.maxLines = 1 
-    if (button.text.isNullOrEmpty()) {
-        button.text = null
-        button.setCompoundDrawables(null, icon, null, null)
-        button.gravity = android.view.Gravity.CENTER
-        button.setPadding(0, 0, 0, 0)
-        button.compoundDrawablePadding = 0
-        
-        // Forzar centrado vertical exacto para botones sin texto (YouTube)
->>>>>>> 0057016 (Refactor UI: Compact layout, optimized video controls, centered YouTube icon, and enhanced lyrics coloring (Yellow/Accent logic))
-        button.post {
-            val verticalPad = ((button.height - heightPx) / 2).coerceAtLeast(0)
-            button.setPadding(0, verticalPad, 0, verticalPad)
+        button.setAllCaps(false)
+        button.maxLines = 1 
+        if (button.text.isNullOrEmpty()) {
+            button.text = null
+            button.setCompoundDrawables(null, icon, null, null)
+            button.gravity = android.view.Gravity.CENTER
+            button.setPadding(0, 0, 0, 0)
+            button.compoundDrawablePadding = 0
+            
+            // Centrado vertical exacto para botones SIN texto (YouTube y Play)
+            button.post {
+                val verticalPad = ((button.height - heightPx) / 2).coerceAtLeast(0)
+                button.setPadding(0, verticalPad, 0, verticalPad)
+            }
+        } else {
+            button.setCompoundDrawables(null, icon, null, null)
+            // Regla de espaciado para botones CON texto: 4px arriba (1.5dp) y 4px abajo (1.5dp)
+            val verticalPaddingPx = (1.5 * density).toInt() 
+            val gapPx = (0.8 * density).toInt()
+            
+            button.compoundDrawablePadding = gapPx
+            button.setPadding(0, verticalPaddingPx, 0, verticalPaddingPx)
+            button.gravity = android.view.Gravity.CENTER
         }
-    } else {
-<<<<<<< HEAD
-        button.setCompoundDrawables(null, icon, null, null)
-        button.compoundDrawablePadding = (2 * resources.displayMetrics.density).toInt()
-        button.setPadding(button.paddingLeft, topPaddingPx, button.paddingRight, button.paddingBottom)
     }
-    button.setAllCaps(false)
-=======
-        // Icono arriba, Texto abajo
-        button.setCompoundDrawables(null, icon, null, null)
-        // Espaciado: ~4px arriba (1.5dp), ~2px gap (0.8dp)
-        val topPaddingPx = (1.5 * density).toInt() 
-        val gapPx = (0.8 * density).toInt()
-        
-        button.compoundDrawablePadding = gapPx
-        button.setPadding(0, topPaddingPx, 0, 0)
-        button.gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-    }
->>>>>>> 0057016 (Refactor UI: Compact layout, optimized video controls, centered YouTube icon, and enhanced lyrics coloring (Yellow/Accent logic))
-}
 
     private fun adjustPlaylistButtons() {
         val buttons = listOf(
@@ -1027,9 +1203,11 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     }
 
     private fun checkForMargins() {
-        if (mainActivity.isBottomNavVisible) {
-            binding.container.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                bottomMargin = dip(R.dimen.bottom_nav_height)
+        binding.container.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+            bottomMargin = if (mainActivity.isBottomNavVisible && !isFullscreen) {
+                dip(R.dimen.bottom_nav_height)
+            } else {
+                0
             }
         }
     }
@@ -1066,6 +1244,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         return uriString?.toUri()
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         val isLandscape = newConfig.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
@@ -1077,12 +1256,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
         val playbackVisibility = if (isLandscape && !isFullscreen) View.GONE else View.VISIBLE
         binding.homeContent.videoSeekBar.visibility = playbackVisibility
-        binding.homeContent.btnPrevVideo.visibility = playbackVisibility
-        binding.homeContent.btnNextVideo.visibility = playbackVisibility
-        binding.homeContent.btnPlayPause.visibility = playbackVisibility
-        binding.homeContent.btnFullscreen.visibility = playbackVisibility
-        binding.homeContent.tvCurrentTime.visibility = playbackVisibility
-        binding.homeContent.tvTotalTime.visibility = playbackVisibility
+        binding.homeContent.btnPrevVideo.parent.let { if (it is View) it.visibility = playbackVisibility }
+        binding.homeContent.tvCurrentTime.parent.let { if (it is View) it.visibility = playbackVisibility }
 
         if (!isFullscreen) {
             binding.homeContent.videoContainer.layoutParams.height = if (isLandscape) {
@@ -1090,6 +1265,17 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             } else {
                 (250 * resources.displayMetrics.density).toInt()
             }
+            
+            binding.homeContent.videoPlayer.resizeMode = if (isLandscape) {
+                androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+            } else {
+                androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
+        } else {
+            // Aseguramos que en fullscreen el contenedor siempre sea MATCH_PARENT tras rotar
+            binding.homeContent.videoContainer.layoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT
+            binding.homeContent.videoContainer.layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+            binding.homeContent.videoPlayer.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
         }
     }
 
@@ -1118,11 +1304,10 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     override fun onPause() {
         super.onPause()
-        if (_binding != null) {
-            val player = binding.homeContent.videoPlayer
-            wasPlayingBeforePause = player.isPlaying
-            savedPosition = player.currentPosition
-            if (player.isPlaying) player.pause()
+        // Permitir reproducción en segundo plano (pantalla apagada)
+        // Solo guardamos la posición pero no pausamos forzosamente aquí
+        exoPlayer?.let {
+            savedPosition = it.currentPosition.toInt()
         }
     }
 
@@ -1131,11 +1316,12 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         checkForMargins()
         exitTransition = null
         if (_binding != null && videoPlaylist.isNotEmpty() && savedPosition > 0) {
-            val player = binding.homeContent.videoPlayer
-            player.seekTo(savedPosition)
-            if (wasPlayingBeforePause) {
-                player.start()
-                setPlayPauseIcon(true)
+            exoPlayer?.apply {
+                seekTo(savedPosition.toLong())
+                if (wasPlayingBeforePause) {
+                    play()
+                    setPlayPauseIcon(true)
+                }
             }
         }
     }
@@ -1147,11 +1333,14 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 .show(WindowInsetsCompat.Type.systemBars())
             mainActivity.setBottomNavVisibility(visible = true, hideBottomSheet = false)
         }
-        if (binding.homeContent.videoPlayer.isPlaying) {
-            savedPosition = binding.homeContent.videoPlayer.currentPosition
+        exoPlayer?.let {
+            if (it.isPlaying) {
+                savedPosition = it.currentPosition.toInt()
+            }
+            it.release()
         }
+        exoPlayer = null
         handler.removeCallbacks(updateSubtitleTask)
-        binding.homeContent.videoPlayer.stopPlayback()
         _binding = null
         super.onDestroyView()
     }
@@ -1165,7 +1354,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
             put(MediaStore.MediaColumns.MIME_TYPE, "video/x-matroska")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/0 VIDEO")
             }
         }
 
@@ -1355,7 +1544,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
             put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/0 VIDEO")
             }
         }
 
@@ -1429,7 +1618,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
             put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/0 VIDEO")
             }
         }
 

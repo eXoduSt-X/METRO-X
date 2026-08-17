@@ -18,6 +18,8 @@ class YoutubeDownloaderFragment : Fragment(R.layout.fragment_youtube_downloader)
     private var _binding: FragmentYoutubeDownloaderBinding? = null
     private val binding get() = _binding!!
 
+    private var isMp3Request = false
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentYoutubeDownloaderBinding.bind(view)
@@ -35,22 +37,37 @@ class YoutubeDownloaderFragment : Fragment(R.layout.fragment_youtube_downloader)
 
         binding.downloadMp3Button.setOnClickListener {
             val url = binding.urlEditText.text.toString()
-            viewModel.download(url, formatId = null, isVideo = false)
+            if (url.isNotBlank()) {
+                isMp3Request = true
+                viewModel.fetchVideoInfo(url)
+            }
         }
 
         binding.downloadVideoButton.setOnClickListener {
             val url = binding.urlEditText.text.toString()
-            viewModel.fetchVideoInfo(url)
+            if (url.isNotBlank()) {
+                isMp3Request = false
+                viewModel.fetchVideoInfo(url)
+            }
         }
 
         viewModel.videoInfo.observe(viewLifecycleOwner) { info ->
             info?.let {
-                showQualityDialog(it)
+                if (isMp3Request) {
+                    viewModel.download(it.webpageUrl ?: it.url!!, it.title ?: "Audio", null, false)
+                    isMp3Request = false
+                } else {
+                    showQualityDialog(it)
+                }
             }
         }
 
         viewModel.progress.observe(viewLifecycleOwner) { progress ->
-            binding.progressBar.progress = progress
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                binding.progressBar.setProgress(progress, true)
+            } else {
+                binding.progressBar.progress = progress
+            }
         }
 
         viewModel.status.observe(viewLifecycleOwner) { status ->
@@ -74,7 +91,7 @@ class YoutubeDownloaderFragment : Fragment(R.layout.fragment_youtube_downloader)
          ?.sortedByDescending { it.height } ?: emptyList()
 
         if (formats.isEmpty()) {
-            viewModel.download(info.webpageUrl ?: info.url!!, null, true)
+            viewModel.download(info.webpageUrl ?: info.url!!, info.title ?: "Video", null, true)
             return
         }
 
@@ -88,7 +105,7 @@ class YoutubeDownloaderFragment : Fragment(R.layout.fragment_youtube_downloader)
             .setTitle(R.string.select_quality)
             .setItems(qualityOptions) { _, which ->
                 val selectedFormat = formats[which]
-                viewModel.download(info.webpageUrl ?: info.url!!, selectedFormat.formatId, true)
+                viewModel.download(info.webpageUrl ?: info.url!!, info.title ?: "Video", selectedFormat.formatId, true)
             }
             .setNegativeButton("Cancelar", null)
             .show()

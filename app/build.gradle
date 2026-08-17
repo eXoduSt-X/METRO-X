@@ -167,6 +167,10 @@ dependencies {
     // --- YouTube Downloader (yt-dlp) ---
     implementation 'io.github.junkfood02.youtubedl-android:library:0.18.1'
     implementation 'io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1'
+
+    // --- ExoPlayer (Media3) ---
+    implementation "androidx.media3:media3-exoplayer:$media3_version"
+    implementation "androidx.media3:media3-ui:$media3_version"
 }
 
 // Extracción manual de binarios para evitar conflictos de MergeSourceSetFolders

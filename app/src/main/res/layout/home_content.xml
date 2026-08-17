@@ -27,11 +27,14 @@
             android:layout_height="250dp"
             android:background="#000000">
 
-            <code.name.monkey.retromusic.fragments.home.StretchVideoView
+            <androidx.media3.ui.PlayerView
                 android:id="@+id/videoPlayer"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:layout_gravity="center" />
+                android:layout_gravity="center"
+                app:use_controller="false"
+                app:surface_type="surface_view"
+                app:resize_mode="fill" />
 
             <ProgressBar
                 android:id="@+id/progressBar"
@@ -85,7 +88,7 @@
         <LinearLayout
             android:id="@+id/cutRow"
             android:layout_width="match_parent"
-            android:layout_height="38dp"
+            android:layout_height="32dp"
             android:orientation="horizontal"
             android:layout_marginTop="12dp">
             <Button
@@ -188,7 +191,7 @@
         <LinearLayout
             android:id="@+id/toolsRow"
             android:layout_width="match_parent"
-            android:layout_height="38dp"
+            android:layout_height="32dp"
             android:orientation="horizontal"
             android:layout_marginTop="4dp">
 
@@ -201,7 +204,7 @@
         <LinearLayout
             android:id="@+id/extraActionsContainer"
             android:layout_width="match_parent"
-            android:layout_height="38dp"
+            android:layout_height="32dp"
             android:orientation="horizontal"
             android:weightSum="5"
             android:layout_marginTop="8dp">

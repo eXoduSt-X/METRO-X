@@ -15,13 +15,14 @@
     <androidx.core.widget.NestedScrollView
         android:id="@+id/container"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
         app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior">
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/contentContainer"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:transitionGroup="true">
 
             <code.name.monkey.retromusic.views.HomeImageLayout
@@ -36,7 +37,7 @@
                 android:id="@+id/home_content"
                 layout="@layout/home_content"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toBottomOf="@id/imageLayout" />

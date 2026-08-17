@@ -310,11 +310,14 @@
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/llSincroControls">
 
-        <VideoView
+        <androidx.media3.ui.PlayerView
             android:id="@+id/videoView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_gravity="center" />
+            android:layout_gravity="center"
+            app:use_controller="false"
+            app:surface_type="surface_view"
+            app:resize_mode="fit" />
     </FrameLayout>
 
     <androidx.constraintlayout.widget.Guideline
