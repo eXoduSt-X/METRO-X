@@ -49,7 +49,7 @@ class VideoFrameAdapter(
             holder.ivFrame.setImageBitmap(frame.bitmap)
             holder.tvTime.text = frame.timeLabel
             holder.itemView.setOnClickListener { onItemClick(frame.timestampMs) }
-            
+
             if (frame.canRemove) {
                 holder.btnRemove.visibility = View.VISIBLE
                 holder.btnRemove.setOnClickListener { onRemoveClick?.invoke(holder.bindingAdapterPosition) }
@@ -65,6 +65,11 @@ class VideoFrameAdapter(
     }
 
     override fun getItemCount() = frames.size
+
+    // Cantidad de items "de contenido" real, excluyendo el botón "add" si existe.
+    // No asumir "itemCount - 1" en el código que consume el adapter: el botón add
+    // solo existe en los flujos de slideshow/merge, no en el filmstrip de video normal.
+    fun contentItemCount(): Int = frames.count { !it.isAddButton }
 
     fun updateFrames(newFrames: List<VideoFrame>) {
         frames.clear()

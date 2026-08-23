@@ -57,6 +57,18 @@
                 android:padding="16dp"
                 android:textColor="#FFFFFF"
                 android:textSize="18sp" />
+            <TextView
+                android:id="@+id/tvResolutionOverlay"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|end"
+                android:layout_margin="8dp"
+                android:textColor="#CCFFFFFF"
+                android:textSize="10sp"
+                android:background="#66000000"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:visibility="gone" />
         </FrameLayout>
 
         <FrameLayout
@@ -64,6 +76,8 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp">
 
+            <!-- Lista de selección para slideshow/unir videos (no es scrubbing de
+                 reproducción, es una lista normal con botones agregar/quitar) -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvFilmstrip"
                 android:layout_width="match_parent"
@@ -74,11 +88,31 @@
                 android:clipToPadding="false"
                 app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
 
+            <!-- Timeline continua de scrubbing para reproducción de video: filmstrip +
+                 waveform en un único View, único scroll, única fuente de verdad. -->
+            <code.name.monkey.retromusic.views.ScrubHorizontalScrollView
+                android:id="@+id/hsvFilmstrip"
+                android:layout_width="match_parent"
+                android:layout_height="96dp"
+                android:background="#222222"
+                android:scrollbars="none"
+                android:visibility="gone"
+                android:overScrollMode="never"
+                android:clipToPadding="false">
+
+                <code.name.monkey.retromusic.views.FilmstripTimelineView
+                    android:id="@+id/filmstripTimeline"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent" />
+
+            </code.name.monkey.retromusic.views.ScrubHorizontalScrollView>
+
             <View
                 android:id="@+id/vFilmstripIndicator"
                 android:layout_width="2dp"
-                android:layout_height="60dp"
-                android:layout_gravity="center_horizontal"
+                android:layout_height="96dp"
+                android:layout_gravity="start"
+                android:layout_marginStart="0dp"
                 android:background="#FF0000"
                 android:visibility="gone" />
         </FrameLayout>
@@ -222,6 +256,7 @@
             <Button android:id="@+id/btnMixVideo" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#6200EE" android:text="MULTIPLEX" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
             <Button android:id="@+id/btnFullscreen" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="REMUX" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
             <Button android:id="@+id/btnLoadSubtitles" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="SUBS" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
+            <Button android:id="@+id/btnSubtitleWorkshop" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="WORKSHOP" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
             <Button android:id="@+id/btnOpenFile" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="VIDEO" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
             <Button android:id="@+id/btnChooseFolder" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="CARPETA" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
         </LinearLayout>
@@ -330,21 +365,20 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/fadeRow"
+            android:id="@+id/assSubsRow"
             android:layout_width="match_parent"
             android:layout_height="32dp"
             android:orientation="horizontal"
             android:layout_marginTop="8dp">
 
             <Button
-                android:id="@+id/btnFadeIn"
-                android:layout_width="0dp"
+                android:id="@+id/btnHardcodeAssSubtitles"
+                android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:layout_weight="1"
                 android:layout_marginHorizontal="2dp"
                 android:backgroundTint="#333333"
                 android:textColor="#FFFFFF"
-                android:text="FADE IN"
+                android:text="SUBS SRT/ASS (estilos)"
                 android:padding="0dp"
                 android:minHeight="0dp"
                 android:insetTop="0dp"
@@ -354,33 +388,89 @@
                 android:maxLines="1"
                 android:gravity="center"
                 android:textSize="8sp" />
+        </LinearLayout>
 
-            <EditText
-                android:id="@+id/etFadeDuration"
+        <LinearLayout
+            android:id="@+id/fadeRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <LinearLayout
                 android:layout_width="0dp"
-                android:layout_weight="0.8"
-                android:layout_height="32dp"
-                android:hint="Secs"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#777777"
-                android:textSize="10sp"
-                android:text="2"
-                android:gravity="center"
-                android:inputType="numberDecimal"
-                android:autofillHints="none"
-                android:backgroundTint="#333333"
-                android:layout_gravity="center_vertical"
-                android:padding="4dp" />
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginHorizontal="2dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="FADE IN"
+                    android:textColor="#AAAAAA"
+                    android:textSize="8sp"
+                    android:gravity="center"
+                    android:layout_marginBottom="2dp" />
+
+                <EditText
+                    android:id="@+id/etFadeInDuration"
+                    android:layout_width="match_parent"
+                    android:layout_height="32dp"
+                    android:hint="Segundos"
+                    android:text="0"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#777777"
+                    android:textSize="10sp"
+                    android:gravity="center"
+                    android:inputType="numberDecimal"
+                    android:autofillHints="none"
+                    android:backgroundTint="#333333"
+                    android:padding="4dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginHorizontal="2dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="FADE OUT"
+                    android:textColor="#AAAAAA"
+                    android:textSize="8sp"
+                    android:gravity="center"
+                    android:layout_marginBottom="2dp" />
+
+                <EditText
+                    android:id="@+id/etFadeOutDuration"
+                    android:layout_width="match_parent"
+                    android:layout_height="32dp"
+                    android:hint="Segundos"
+                    android:text="0"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#777777"
+                    android:textSize="10sp"
+                    android:gravity="center"
+                    android:inputType="numberDecimal"
+                    android:autofillHints="none"
+                    android:backgroundTint="#333333"
+                    android:padding="4dp" />
+            </LinearLayout>
 
             <Button
-                android:id="@+id/btnFadeOut"
+                android:id="@+id/btnApplyFade"
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
+                android:layout_height="32dp"
+                android:layout_weight="1.2"
                 android:layout_marginHorizontal="2dp"
+                android:layout_gravity="bottom"
                 android:backgroundTint="#333333"
                 android:textColor="#FFFFFF"
-                android:text="FADE OUT"
+                android:text="APLICAR FADE"
                 android:padding="0dp"
                 android:minHeight="0dp"
                 android:insetTop="0dp"
@@ -390,6 +480,81 @@
                 android:maxLines="1"
                 android:gravity="center"
                 android:textSize="8sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/subtitleWorkshopContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#222222"
+            android:padding="8dp"
+            android:layout_marginTop="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="SRT SUBTITLE EDITOR"
+                android:textColor="#00BFFF"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/etSubtitleWorkshop"
+                android:layout_width="match_parent"
+                android:layout_height="120dp"
+                android:hint="Pega tus letras o subtítulos aquí..."
+                android:textColor="#FFFFFF"
+                android:textColorHint="#777777"
+                android:textSize="12sp"
+                android:gravity="top"
+                android:background="#333333"
+                android:padding="8dp"
+                android:layout_marginTop="4dp"
+                android:scrollbars="vertical"
+                android:inputType="textMultiLine" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+
+                <Button
+                    android:id="@+id/btnWorkshopStamp"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:text="STAMP [TIME]"
+                    android:textSize="10sp"
+                    android:padding="0dp"
+                    android:minHeight="0dp"
+                    android:backgroundTint="#008000" />
+
+                <Button
+                    android:id="@+id/btnWorkshopClearStamps"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:text="LIMPIAR TIEMPOS"
+                    android:textSize="10sp"
+                    android:padding="0dp"
+                    android:minHeight="0dp"
+                    android:backgroundTint="#444444"
+                    android:layout_marginHorizontal="4dp" />
+
+                <Button
+                    android:id="@+id/btnWorkshopSave"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:text="EXPORTAR SRT"
+                    android:textSize="10sp"
+                    android:padding="0dp"
+                    android:minHeight="0dp"
+                    android:backgroundTint="#6200EE" />
+            </LinearLayout>
         </LinearLayout>
 
         <Button

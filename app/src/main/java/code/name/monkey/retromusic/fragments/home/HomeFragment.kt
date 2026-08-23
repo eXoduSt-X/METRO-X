@@ -84,10 +84,15 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     private val subtitleList = mutableListOf<Subtitle>()
     private val handler = Handler(Looper.getMainLooper())
     private var selectedSubtitleUri: Uri? = null
+
+    private var selectedAssSubtitleUri: Uri? = null
+
+    private var pendingAssHardcodeBurn = false
     private var selectedAudioUri: Uri? = null
     private var selectedAudioUris = mutableListOf<Uri>()
 
     private var pendingHardcodeBurn = false
+    private var workshopSubtitleIndex = -1
 
     private var isFullscreen = false
     private lateinit var fullscreenGestureDetector: GestureDetector
@@ -128,9 +133,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             } catch (e: Exception) { null }
             VideoFrameAdapter.VideoFrame(index.toLong(), bitmap, "Img ${index + 1}", canRemove = true)
         }.toMutableList()
-        
+
         frames.add(VideoFrameAdapter.VideoFrame(0, null, "", isAddButton = true))
-        
+
         if (_binding != null) {
             binding.homeContent.rvFilmstrip.apply {
                 if (filmstripAdapter == null || adapter != filmstripAdapter) {
@@ -163,7 +168,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     private fun updateMergeFilmstrip() {
         binding.homeContent.rvFilmstrip.visibility = View.GONE
-        
+
         Thread {
             val frames = mergeVideosUris.mapIndexed { index, uri ->
                 val retriever = MediaMetadataRetriever()
@@ -177,13 +182,13 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 } catch (e: Exception) { null } finally {
                     retriever.release()
                 }
-                
+
                 val name = getBetterName(uri).substringBeforeLast(".")
                 VideoFrameAdapter.VideoFrame(index.toLong(), bitmap, name, canRemove = true)
             }.toMutableList()
-            
+
             frames.add(VideoFrameAdapter.VideoFrame(0, null, "", isAddButton = true))
-            
+
             requireActivity().runOnUiThread {
                 filmstripAdapter = VideoFrameAdapter(frames, { /* Preview? */ }, {
                     mergePickerLauncher.launch("video/*")
@@ -202,8 +207,12 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }.start()
     }
 
-    private var isUserScrollingFilmstrip = false
-
+    private var isUserTouchingFilmstrip = false
+    private var lastManualScrollTime = 0L
+    private var pendingSeekMs: Long = -1L
+    private val hideResolutionRunnable = Runnable {
+        _binding?.homeContent?.tvResolutionOverlay?.visibility = View.GONE
+    }
     private val updateSubtitleTask = object : Runnable {
         override fun run() {
             exoPlayer?.let { player ->
@@ -213,11 +222,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
                 if (currentSub != null) {
                     _binding?.homeContent?.tvSubtitleOverlay?.let { tv ->
-                        val subText = if (currentSub.translation != null) {
-                            "${currentSub.original}\n${currentSub.translation}"
-                        } else {
-                            currentSub.original
-                        }
+                        val subText = if (currentSub.translation != null) "${currentSub.original}\n${currentSub.translation}" else currentSub.original
                         if (tv.text != subText) tv.text = subText
                         tv.visibility = View.VISIBLE
                     }
@@ -235,14 +240,19 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                     binding.homeContent.videoSeekBar.progress = currentPos
                     binding.homeContent.tvCurrentTime.text = formatTime(currentPos)
                     binding.homeContent.tvTotalTime.text = formatTime(player.duration.toInt())
-                    
-                    // Sincronizar tira SOLO si el usuario no la está tocando
-                    if (!isUserScrollingFilmstrip) {
-                        syncFilmstripScroll(currentPos.toLong(), player.duration)
+
+                    // Sincronización con la timeline: scrollTo() directo, sin diffs ni
+                    // umbrales — es barato e idempotente, y solo corre cuando el usuario
+                    // no está arrastrando, así que nunca compite con su gesto.
+                    if (!isUserTouchingFilmstrip && System.currentTimeMillis() - lastManualScrollTime > 300) {
+                        val timeline = binding.homeContent.filmstripTimeline
+                        if (timeline.pxPerMs > 0f) {
+                            binding.homeContent.hsvFilmstrip.scrollTo(timeline.timeMsToPx(currentPos.toLong()), 0)
+                        }
                     }
                 }
             }
-            handler.postDelayed(this, 250)
+            handler.postDelayed(this, 50) // Alta frecuencia (20fps) para fluidez total
         }
     }
 
@@ -256,13 +266,33 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             }
         }
     }
-
+    private val assSubtitlePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            selectedAssSubtitleUri = it
+            if (pendingAssHardcodeBurn) {
+                pendingAssHardcodeBurn = false
+                hardcodearSubtitulosAss()
+            } else {
+                Toast.makeText(requireContext(), "Subtítulo SRT/ASS cargado", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     private val subtitlePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             selectedSubtitleUri = it
             try {
                 requireContext().contentResolver.openInputStream(it)?.use { stream -> parseSrt(stream) }
                 Toast.makeText(requireContext(), R.string.subtitulos_cargados, Toast.LENGTH_SHORT).show()
+
+                workshopSubtitleIndex = 0
+                // Cargar subtítulos en el editor estilo lírica si el panel está visible o se abre
+                if (subtitleList.isNotEmpty()) {
+                    val lrcStyleText = StringBuilder()
+                    subtitleList.forEach { sub ->
+                        lrcStyleText.append("${formatTimeLrc(sub.startTime.toInt())} ${sub.original}\n")
+                    }
+                    binding.homeContent.etSubtitleWorkshop.setText(lrcStyleText.toString())
+                }
 
                 if (pendingHardcodeBurn) {
                     pendingHardcodeBurn = false
@@ -303,12 +333,20 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             .setNegativeButton(R.string.action_cancel, null)
             .show()
     }
-
+    private fun refrescarListaVideos() {
+        val folderUri = selectedFolderUri ?: loadSavedFolderUri()
+        if (folderUri != null) {
+            loadVideosFromSelectedFolder(folderUri)
+        } else {
+            val youtubeFolder = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "0 VIDEO")
+            loadVideosFromDirectory(youtubeFolder)
+        }
+    }
     private fun getBetterName(uri: Uri): String {
         var name: String? = null
         val context = requireContext()
         val resolver = context.contentResolver
-        
+
         var uriSize = 0L
         try {
             resolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
@@ -323,13 +361,13 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                     val displayName = cursor.getString(0) ?: ""
                     val title = cursor.getString(1) ?: ""
                     val path = cursor.getString(2) ?: ""
-                    
+
                     name = if (displayName.matches(Regex("^\\d+\\..*")) && title.isNotBlank() && !title.matches(Regex("^\\d+$"))) {
                         if (title.contains(".")) title else "$title.mp4"
                     } else {
                         displayName
                     }
-                    
+
                     if (name!!.matches(Regex("^\\d+\\..*")) && path.isNotBlank()) {
                         val file = File(path)
                         if (file.exists() && !file.name.matches(Regex("^\\d+\\..*"))) {
@@ -373,7 +411,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             setPadding(0, 12, 0, 12)
             clipToPadding = false
         }
-        
+
         val adapter = MergeVideoAdapter(videoItems)
         recyclerView.adapter = adapter
 
@@ -406,7 +444,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             val tvName: TextView = v.findViewById(R.id.tvFilename)
             val tvDetails: TextView = v.findViewById(R.id.tvDetails)
         }
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = 
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
             ViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_batch_song, parent, false))
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = items[position]
@@ -573,13 +611,17 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         val extensions = arrayOf("mp4", "mkv", "avi", "mov", "flv", "wmv", "webm")
         return extensions.any { file.extension.lowercase() == it }
     }
-
+    private fun isVideoExtension(name: String): Boolean {
+        val extensions = arrayOf("mp4", "mkv", "avi", "mov", "flv", "wmv", "webm")
+        return extensions.any { name.substringAfterLast('.', "").lowercase() == it }
+    }
     private fun loadVideosFromSelectedFolder(uri: Uri) {
         downloadVideoList.clear()
         val pickedDir = androidx.documentfile.provider.DocumentFile.fromTreeUri(requireContext(), uri)
         pickedDir?.listFiles()?.forEach { file ->
-            if (file.type?.startsWith("video/") == true) {
-                downloadVideoList.add(Pair(file.name ?: "Video", file.uri))
+            val name = file.name
+            if (name != null && (file.type?.startsWith("video/") == true || isVideoExtension(name))) {
+                downloadVideoList.add(Pair(name, file.uri))
             }
         }
         binding.homeContent.rvDownloads.adapter = DownloadVideoAdapter(downloadVideoList) { clickedUri ->
@@ -619,7 +661,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentHomeBinding.bind(view)
-        
+
         updateSlideshowFilmstrip()
 
         binding.imageLayout.visibility = View.GONE
@@ -661,13 +703,11 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         setFixedIcon(binding.homeContent.btnChooseFolder, R.drawable.ic_vfolder)
         setFixedIcon(binding.homeContent.btnConvertAudio, R.drawable.ic_mp3)
         setFixedIcon(binding.homeContent.btnHardcodeSubtitles, R.drawable.ic_subs)
+        setFixedIcon(binding.homeContent.btnSubtitleWorkshop, R.drawable.ic_edit)
         setFixedIcon(binding.homeContent.btnCreateVideoFromPhotos, R.drawable.ic_slide)
         setFixedIcon(binding.homeContent.btnCreateGif, R.drawable.ic_gif)
         setFixedIcon(binding.homeContent.btnYoutubeDownload, R.drawable.ic_youtube, 130, 29)
         setFixedIcon(binding.homeContent.btnTagEditor, R.drawable.ic_dashboard)
-        setFixedIcon(binding.homeContent.btnFadeIn, R.drawable.ic_keyboard_arrow_up)
-        setFixedIcon(binding.homeContent.btnFadeOut, R.drawable.ic_keyboard_arrow_down)
-
         setPlayPauseIcon(false)
 
         fullscreenGestureDetector = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
@@ -718,6 +758,14 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                     }
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         setPlayPauseIcon(isPlaying)
+                    }
+                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                        _binding?.homeContent?.tvResolutionOverlay?.let { tv ->
+                            tv.text = "${videoSize.width}x${videoSize.height}"
+                            tv.visibility = View.VISIBLE
+                        }
+                        handler.removeCallbacks(hideResolutionRunnable)
+                        handler.postDelayed(hideResolutionRunnable, 3000)
                     }
                 })
             }
@@ -796,11 +844,42 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
 
         binding.homeContent.btnMixVideo.setOnClickListener {
-            val subUri = selectedSubtitleUri
-            if (videoPlaylist.isNotEmpty() && subUri != null) {
-                createMkvWithSubtitles(videoPlaylist[currentIndex], subUri, selectedAudioUri)
+            if (videoPlaylist.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val workshopText = binding.homeContent.etSubtitleWorkshop.text.toString()
+            if (workshopText.contains("[")) {
+                // Hay subtítulos en el Workshop, usarlos directamente
+                val fileName = "Temp_Workshop_${System.currentTimeMillis()}.srt"
+                val tempFile = File(requireContext().cacheDir, fileName)
+                
+                val lines = workshopText.split("\n").filter { it.isNotBlank() }
+                val srtContent = StringBuilder()
+                val stampRegex = "\\[(\\d{2}:\\d{2}\\.\\d{2})\\]".toRegex()
+
+                for (i in lines.indices) {
+                    val currentLine = lines[i]
+                    val match = stampRegex.find(currentLine) ?: continue
+                    val startTimeMs = lrcTimeToMs(match.value)
+                    val endTimeMs = if (i < lines.size - 1) {
+                        val nextMatch = stampRegex.find(lines[i + 1])
+                        if (nextMatch != null) lrcTimeToMs(nextMatch.value) else startTimeMs + 2000
+                    } else startTimeMs + 2000
+                    val subtitleText = currentLine.replace(stampRegex, "").trim()
+                    srtContent.append("${i + 1}\n${formatTimeSrt(startTimeMs)} --> ${formatTimeSrt(endTimeMs)}\n$subtitleText\n\n")
+                }
+                
+                tempFile.writeText(srtContent.toString())
+                createMkvWithSubtitles(videoPlaylist[currentIndex], Uri.fromFile(tempFile), selectedAudioUri)
+            } else if (selectedSubtitleUri != null) {
+                // Usar el archivo SRT cargado
+                createMkvWithSubtitles(videoPlaylist[currentIndex], selectedSubtitleUri!!, selectedAudioUri)
             } else {
-                Toast.makeText(requireContext(), R.string.selecciona_video_y_subtitulos, Toast.LENGTH_SHORT).show()
+                // No hay nada, pedir archivo
+                Toast.makeText(requireContext(), "Carga un SRT o escribe en el Workshop", Toast.LENGTH_SHORT).show()
+                subtitlePickerLauncher.launch("*/*")
             }
         }
 
@@ -825,6 +904,16 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 splitVideo(videoPlaylist[currentIndex], startTime, endTime)
             } else {
                 Toast.makeText(requireContext(), "Define los tiempos de corte", Toast.LENGTH_SHORT).show()
+            }
+        }
+        binding.homeContent.btnHardcodeAssSubtitles.setOnClickListener {
+            if (videoPlaylist.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (selectedAssSubtitleUri != null) hardcodearSubtitulosAss() else {
+                pendingAssHardcodeBurn = true
+                assSubtitlePickerLauncher.launch("*/*")
             }
         }
 
@@ -859,26 +948,169 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             findNavController().navigate(R.id.youtube_downloader_fragment)
         }
 
-        binding.homeContent.btnFadeIn.setOnClickListener { aplicarFade(true) }
-        binding.homeContent.btnFadeOut.setOnClickListener { aplicarFade(false) }
+        binding.homeContent.btnApplyFade.setOnClickListener { aplicarFadeCombinado() }
+
+        setupSubtitleWorkshopListeners()
     }
 
-    private fun aplicarFade(fadeIn: Boolean) {
+    private fun setupSubtitleWorkshopListeners() {
+        binding.homeContent.btnSubtitleWorkshop.setOnClickListener {
+            val workshop = binding.homeContent.subtitleWorkshopContainer
+            if (workshop.visibility == View.VISIBLE) {
+                workshop.visibility = View.GONE
+            } else {
+                workshop.visibility = View.VISIBLE
+                if (subtitleList.isNotEmpty()) {
+                    // Cargar SIEMPRE los subtítulos actuales al estilo LRC con corchetes
+                    val lrcStyleText = StringBuilder()
+                    subtitleList.forEach {
+                        lrcStyleText.append("${formatTimeLrc(it.startTime.toInt())} ${it.original}\n")
+                    }
+                    binding.homeContent.etSubtitleWorkshop.setText(lrcStyleText.toString())
+                }
+            }
+        }
+
+        binding.homeContent.btnWorkshopStamp.setOnClickListener {
+            handleWorkshopMarking()
+        }
+
+        binding.homeContent.btnWorkshopClearStamps.setOnClickListener {
+            val currentText = binding.homeContent.etSubtitleWorkshop.text.toString()
+            val cleanText = currentText.replace("\\[[^\\]]+\\]".toRegex(), "").trim()
+            binding.homeContent.etSubtitleWorkshop.setText(cleanText)
+        }
+
+        binding.homeContent.btnWorkshopSave.setOnClickListener {
+            exportWorkshopToSrt()
+        }
+    }
+
+    private fun handleWorkshopMarking() {
+        val et = binding.homeContent.etSubtitleWorkshop
+        val pos = et.selectionStart
+        val text = et.text.toString().replace("\r\n", "\n").replace("\r", "\n")
+
+        if (text.isEmpty()) return
+
+        // Encontrar los límites de la línea actual de forma precisa
+        val lineStart = if (pos == 0) 0 else text.lastIndexOf("\n", pos - 1) + 1
+        var lineEnd = text.indexOf("\n", pos)
+        if (lineEnd == -1) lineEnd = text.length
+
+        val fullLine = text.substring(lineStart, lineEnd)
+        
+        // Limpiar cualquier timestamp previo o espacio al inicio
+        val cleanLine = fullLine.replace("\\[[^\\]]+\\]".toRegex(), "").trim()
+
+        // Capturar la posición exacta del player en este instante
+        val currentMs = exoPlayer?.currentPosition?.toInt() ?: 0
+        val timeStamp = formatTimeLrc(currentMs)
+        val newLineText = "$timeStamp $cleanLine"
+
+        val updatedText = StringBuilder(text)
+        updatedText.replace(lineStart, lineEnd, newLineText)
+        
+        et.setText(updatedText.toString())
+        et.requestFocus()
+
+        // Salto garantizado a la siguiente línea
+        val nextLineStart = lineStart + newLineText.length + 1
+        if (nextLineStart <= updatedText.length) {
+            et.setSelection(nextLineStart)
+        } else {
+            // Si es la última línea, simplemente ir al final
+            et.setSelection(updatedText.length)
+        }
+    }
+
+    private fun formatTimeLrc(millis: Int): String {
+        val totalSeconds = millis / 1000
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        val hundredths = (millis % 1000) / 10
+        return String.format(Locale.getDefault(), "[%02d:%02d.%02d]", minutes, seconds, hundredths)
+    }
+
+    private fun lrcTimeToMs(time: String): Int {
+        return try {
+            val cleanTime = time.replace("[", "").replace("]", "")
+            val parts = cleanTime.split(":")
+            val minutes = parts[0].toInt()
+            val secondsParts = parts[1].split(".")
+            val seconds = secondsParts[0].toInt()
+            val hundredths = secondsParts[1].toInt()
+            (minutes * 60 * 1000) + (seconds * 1000) + (hundredths * 10)
+        } catch (e: Exception) { 0 }
+    }
+
+    private fun exportWorkshopToSrt() {
+        val text = binding.homeContent.etSubtitleWorkshop.text.toString()
+        if (text.isBlank()) return
+
+        val lines = text.split("\n").filter { it.isNotBlank() }
+        val srtContent = StringBuilder()
+        
+        val stampRegex = "\\[(\\d{2}:\\d{2}\\.\\d{2})\\]".toRegex()
+
+        for (i in lines.indices) {
+            val currentLine = lines[i]
+            val match = stampRegex.find(currentLine) ?: continue
+            val startTimeMs = lrcTimeToMs(match.value)
+            
+            // El tiempo final es el inicio de la siguiente línea o +2 segundos si es la última
+            val endTimeMs = if (i < lines.size - 1) {
+                val nextMatch = stampRegex.find(lines[i + 1])
+                if (nextMatch != null) lrcTimeToMs(nextMatch.value) else startTimeMs + 2000
+            } else {
+                startTimeMs + 2000
+            }
+
+            val subtitleText = currentLine.replace(stampRegex, "").trim()
+            
+            srtContent.append("${i + 1}\n")
+            srtContent.append("${formatTimeSrt(startTimeMs)} --> ${formatTimeSrt(endTimeMs)}\n")
+            srtContent.append("$subtitleText\n\n")
+        }
+
+        val fileName = "Workshop_${System.currentTimeMillis()}.srt"
+        val tempFile = File(requireContext().cacheDir, fileName)
+        tempFile.writeText(srtContent.toString())
+        saveToDownloads(tempFile, fileName, "text/plain")
+    }
+
+    private fun formatTimeSrt(millis: Int): String {
+        val totalSeconds = millis / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        val ms = millis % 1000
+        return String.format(Locale.getDefault(), "%02d:%02d:%02d,%03d", hours, minutes, seconds, ms)
+    }
+
+    private fun aplicarFadeCombinado() {
         if (videoPlaylist.isEmpty()) {
             Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
             return
         }
-        val fadeDuration = binding.homeContent.etFadeDuration.text.toString().toDoubleOrNull() ?: 2.0
+        val fadeInSec = binding.homeContent.etFadeInDuration.text.toString().toDoubleOrNull() ?: 0.0
+        val fadeOutSec = binding.homeContent.etFadeOutDuration.text.toString().toDoubleOrNull() ?: 0.0
+
+        if (fadeInSec <= 0.0 && fadeOutSec <= 0.0) {
+            Toast.makeText(requireContext(), "Define al menos un tiempo de fade in o fade out", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val videoUri = videoPlaylist[currentIndex]
         val totalDurationMs = getMediaDuration(videoUri)
         val totalDurationSec = totalDurationMs / 1000.0
 
-        if (fadeDuration > totalDurationSec) {
-            Toast.makeText(requireContext(), "Fade duration is longer than video", Toast.LENGTH_SHORT).show()
+        if (fadeInSec + fadeOutSec > totalDurationSec) {
+            Toast.makeText(requireContext(), "La suma de fade in + fade out es mayor que la duración del video", Toast.LENGTH_SHORT).show()
             return
         }
 
-        Toast.makeText(requireContext(), "Aplicando Fade ${if (fadeIn) "In" else "Out"}...", Toast.LENGTH_LONG).show()
+        Toast.makeText(requireContext(), "Aplicando fades...", Toast.LENGTH_LONG).show()
         mostrarProgreso(totalDurationMs)
 
         Thread {
@@ -888,18 +1120,40 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
             val originalName = requireContext().contentResolver.query(videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
                 ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
-            val fileName = "${originalName.substringBeforeLast(".")}_fade${if (fadeIn) "in" else "out"}.mp4"
+            val fileName = "${originalName.substringBeforeLast(".")}_fade.mp4"
 
-            val st = if (fadeIn) 0.0 else (totalDurationSec - fadeDuration).coerceAtLeast(0.0)
-            val vFilter = "fade=${if (fadeIn) "in" else "out"}:st=$st:d=$fadeDuration"
-            val aFilter = "afade=${if (fadeIn) "in" else "out"}:st=$st:d=$fadeDuration"
+            // Una sola pasada: fade in y fade out en el mismo filtergraph, video y audio juntos.
+            val videoFilters = mutableListOf<String>()
+            val audioFilters = mutableListOf<String>()
 
-            val cmd = "-y -i \"${videoFile.absolutePath}\" -vf \"$vFilter\" -af \"$aFilter\" -c:v h264_mediacodec -b:v 2M -c:a aac \"${outputFile.absolutePath}\""
-            FFmpegKit.executeAsync(cmd, { session ->
+            if (fadeInSec > 0.0) {
+                videoFilters.add("fade=t=in:st=0:d=$fadeInSec")
+                audioFilters.add("afade=t=in:st=0:d=$fadeInSec")
+            }
+            if (fadeOutSec > 0.0) {
+                val fadeOutStart = (totalDurationSec - fadeOutSec).coerceAtLeast(0.0)
+                videoFilters.add("fade=t=out:st=$fadeOutStart:d=$fadeOutSec")
+                audioFilters.add("afade=t=out:st=$fadeOutStart:d=$fadeOutSec")
+            }
+
+            // "null"/"anull" son los filtros de paso directo (no confundir con -c copy,
+            // que es un flag de codec y no existe dentro de un filtergraph).
+            val vChain = if (videoFilters.isNotEmpty()) "[0:v]${videoFilters.joinToString(",")}[v]" else "[0:v]null[v]"
+            val aChain = if (audioFilters.isNotEmpty()) "[0:a]${audioFilters.joinToString(",")}[a]" else "[0:a]anull[a]"
+            val filterComplex = "$vChain;$aChain"
+
+            val filterScriptFile = File(requireContext().cacheDir, "fade_filter.txt").apply { writeText(filterComplex) }
+
+            val command = "-y -i \"${videoFile.absolutePath}\" -filter_complex_script \"${filterScriptFile.absolutePath}\" " +
+                    "-map \"[v]\" -map \"[a]\" -c:v h264_mediacodec -b:v 2M -c:a aac \"${outputFile.absolutePath}\""
+
+            FFmpegKit.executeAsync(command, { session ->
                 if (ReturnCode.isSuccess(session.returnCode)) saveToDownloads(outputFile, fileName)
+                else Log.e("FFmpegFade", session.allLogsAsString)
                 ocultarProgreso()
                 videoFile.delete()
-                outputFile.delete()
+                filterScriptFile.delete()
+                if (outputFile.exists()) outputFile.delete()
             }, { stats -> actualizarProgreso(stats.time, totalDurationMs) })
         }.start()
     }
@@ -940,7 +1194,21 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         binding.homeContent.extraActionsContainer.visibility = visibility
         binding.homeContent.rvDownloads.visibility = visibility
         binding.homeContent.btnYoutubeDownload.visibility = visibility
-        binding.homeContent.rvFilmstrip.visibility = visibility
+        if (fullscreen) {
+            binding.homeContent.rvFilmstrip.visibility = View.GONE
+            binding.homeContent.hsvFilmstrip.visibility = View.GONE
+            binding.homeContent.vFilmstripIndicator.visibility = View.GONE
+        } else {
+            // Restaurar solo la vista que corresponde al modo activo: la timeline de
+            // video si hay una generada, o la lista de selección si estamos en modo
+            // slideshow/unir. La otra debe seguir oculta.
+            if (binding.homeContent.filmstripTimeline.pxPerMs > 0f) {
+                binding.homeContent.hsvFilmstrip.visibility = View.VISIBLE
+                binding.homeContent.vFilmstripIndicator.visibility = View.VISIBLE
+            } else if (slideshowImages.isNotEmpty() || mergeVideosUris.isNotEmpty()) {
+                binding.homeContent.rvFilmstrip.visibility = View.VISIBLE
+            }
+        }
         binding.homeContent.videoSeekBar.visibility = visibility
         binding.homeContent.tvCurrentTime.parent.let { if (it is View) it.visibility = visibility }
         binding.homeContent.btnPrevVideo.parent.let { if (it is View) it.visibility = visibility }
@@ -962,7 +1230,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         binding.container.layoutParams = containerParams
         binding.container.isNestedScrollingEnabled = !fullscreen
         binding.container.overScrollMode = if (fullscreen) View.OVER_SCROLL_NEVER else View.OVER_SCROLL_ALWAYS
-        
+
         binding.homeContent.videoPlayer.resizeMode = if (fullscreen) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
 
         checkForMargins()
@@ -985,83 +1253,156 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
     }
 
-    private fun syncFilmstripScroll(currentPosMs: Long, durationMs: Long) {
-        if (durationMs <= 0 || slideshowImages.isNotEmpty() || mergeVideosUris.isNotEmpty()) return
-        
-        val recyclerView = binding.homeContent.rvFilmstrip
-        if (recyclerView.visibility != View.VISIBLE) return
+    /**
+     * Cablea la timeline UNA vez por filmstrip generado: un touch listener (para
+     * pausar/reanudar y avisarle al padre que no intercepte el gesto) y un único
+     * callback de scroll que convierte scrollX -> tiempo con filmstripTimeline.pxToTimeMs().
+     * No hay una segunda fuente de posición en ningún lado: mientras el usuario
+     * toca, este callback es la única verdad; cuando no toca, el scroll viene de
+     * nuestro propio scrollTo() al reproducir (ver updateSubtitleTask) y no hace
+     * falta reaccionar a él.
+     */
+    private fun setupFilmstripScrubbing() {
+        val hsv = binding.homeContent.hsvFilmstrip
+        val timeline = binding.homeContent.filmstripTimeline
 
-        val totalRange = recyclerView.computeHorizontalScrollRange() - recyclerView.width
-        if (totalRange <= 0) return
+        hsv.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    // Evita que el CoordinatorLayout padre robe el gesto a mitad de
+                    // camino (causaba zigzag y layouts forzados a mitad del drag).
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                    isUserTouchingFilmstrip = true
+                    exoPlayer?.pause()
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.parent?.requestDisallowInterceptTouchEvent(false)
+                    isUserTouchingFilmstrip = false
+                    lastManualScrollTime = System.currentTimeMillis()
+                    if (pendingSeekMs >= 0) {
+                        exoPlayer?.seekTo(pendingSeekMs)
+                        pendingSeekMs = -1L
+                    }
+                    v.performClick()
+                }
+            }
+            false // no consumir: dejar que el scroll nativo del HorizontalScrollView actúe
+        }
 
-        val progress = currentPosMs.toFloat() / durationMs
-        val targetScrollX = progress * totalRange
-
-        val currentScrollX = recyclerView.computeHorizontalScrollOffset()
-        val diff = targetScrollX.toInt() - currentScrollX
-        
-        if (Math.abs(diff) > 2) {
-            recyclerView.scrollBy(diff, 0)
+        hsv.onScrollXChanged = { scrollX ->
+            if (isUserTouchingFilmstrip && _binding != null) {
+                val timeMs = timeline.pxToTimeMs(scrollX)
+                pendingSeekMs = timeMs
+                // Solo UI liviana durante el drag: el seek real pasa recién en
+                // ACTION_UP, para no meter trabajo pesado de decodificación en
+                // medio del gesto de scroll.
+                binding.homeContent.tvCurrentTime.text = formatTime(timeMs.toInt())
+                binding.homeContent.videoSeekBar.progress = timeMs.toInt()
+            }
         }
     }
 
     private fun generateFilmstrip(uri: Uri) {
         binding.homeContent.rvFilmstrip.visibility = View.GONE
+        binding.homeContent.hsvFilmstrip.visibility = View.GONE
         binding.homeContent.vFilmstripIndicator.visibility = View.GONE
         slideshowImages.clear()
         mergeVideosUris.clear()
         filmstripAdapter = null
-        
+
+        val context = requireContext()
+        val density = resources.displayMetrics.density
+        val thumbWidthPx = (70 * density).toInt()
+
         Thread {
             val retriever = MediaMetadataRetriever()
             try {
-                retriever.setDataSource(requireContext(), uri)
+                retriever.setDataSource(context, uri)
                 val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
-                val frames = mutableListOf<VideoFrameAdapter.VideoFrame>()
-                val frameCount = 24
+                val durationSec = durationMs / 1000
+
+                // CÁLCULO DINÁMICO: 1 frame cada 5 segundos. Mínimo 20, Máximo 100.
+                val frameCount = (durationSec / 5).toInt().coerceIn(20, 100)
+                val totalWidthPx = frameCount * thumbWidthPx
                 val interval = durationMs / frameCount
+
+                val frames = mutableListOf<code.name.monkey.retromusic.views.FilmstripTimelineView.Frame>()
+                slideshowImages.clear()
+
+                // Fallback: si un frame puntual falla (común cerca del final de videos
+                // largos, donde no siempre hay un frame decodificable exacto en el
+                // timestamp pedido), reusamos el último bitmap válido en vez de dejar
+                // null. Un solo fallo no debe tirar abajo la tira entera.
+                var lastGoodBitmap: Bitmap? = null
+
+                fun extractFrameSafe(atMs: Long): Bitmap? {
+                    return try {
+                        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                            retriever.getScaledFrameAtTime(atMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 120, 70)
+                        } else {
+                            retriever.getFrameAtTime(atMs * 1000)
+                        }
+                        if (b != null) lastGoodBitmap = b
+                        b ?: lastGoodBitmap
+                    } catch (e: Exception) {
+                        Log.w("Filmstrip", "Fallo extrayendo frame en ${atMs}ms: ${e.message}")
+                        lastGoodBitmap
+                    }
+                }
+
                 for (i in 0 until frameCount) {
                     val timeMs = i * interval
-                    val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) retriever.getScaledFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 120, 70) else retriever.getFrameAtTime(timeMs * 1000)
-                    frames.add(VideoFrameAdapter.VideoFrame(timeMs, bitmap, formatTime(timeMs.toInt())))
+                    val bitmap = extractFrameSafe(timeMs)
+                    frames.add(code.name.monkey.retromusic.views.FilmstripTimelineView.Frame(timeMs, bitmap))
                 }
-                requireActivity().runOnUiThread {
-                    binding.homeContent.rvFilmstrip.apply {
-                        val halfWidth = resources.displayMetrics.widthPixels / 2
-                        setPadding(halfWidth, 0, halfWidth, 0)
-                        
-                        layoutManager = LinearLayoutManager(requireContext(), RecyclerView.HORIZONTAL, false)
-                        adapter = VideoFrameAdapter(frames, { seekTime -> 
-                            exoPlayer?.seekTo(seekTime)
-                        })
-                        
-                        // Escuchar el scroll manual para actualizar el video
-                        addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
-                                val wasScrolling = isUserScrollingFilmstrip
-                                isUserScrollingFilmstrip = newState != RecyclerView.SCROLL_STATE_IDLE
-                                
-                                if (wasScrolling && !isUserScrollingFilmstrip) {
-                                    exoPlayer?.let { player ->
-                                        val duration = player.duration
-                                        if (duration > 0) {
-                                            val scrollX = computeHorizontalScrollOffset()
-                                            val totalRange = computeHorizontalScrollRange() - width
-                                            val progress = (scrollX.toFloat() / totalRange).coerceIn(0f, 1f)
-                                            player.seekTo((progress * duration).toLong())
-                                        }
-                                    }
-                                }
-                            }
-                        })
 
+                // Último frame: pedir el timestamp EXACTO de duración suele fallar (no
+                // hay frame decodificable en el último microsegundo). Retrocedemos medio
+                // segundo, margen seguro para este problema conocido.
+                val safeLastTimeMs = (durationMs - 500).coerceAtLeast(0)
+                val lastBitmap = extractFrameSafe(safeLastTimeMs)
+                frames.add(code.name.monkey.retromusic.views.FilmstripTimelineView.Frame(durationMs, lastBitmap))
+
+                requireActivity().runOnUiThread {
+                    if (_binding == null) return@runOnUiThread
+                    binding.homeContent.hsvFilmstrip.apply {
+                        setPadding(0, 0, resources.displayMetrics.widthPixels, 0)
                         visibility = View.VISIBLE
                     }
+                    binding.homeContent.filmstripTimeline.setTimeline(frames, durationMs, totalWidthPx)
+                    setupFilmstripScrubbing()
                     binding.homeContent.vFilmstripIndicator.visibility = View.VISIBLE
+                    generateWaveform(uri, totalWidthPx)
                 }
-            } catch (e: Exception) { e.printStackTrace() } finally { retriever.release() }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                retriever.release()
+            }
         }.start()
     }
+
+    private fun generateWaveform(uri: Uri, widthPx: Int) {
+        val videoFile = cacheUriToFile(uri, "input_waveform.mp4")
+        val outputFile = File(requireContext().cacheDir, "waveform.png")
+        if (outputFile.exists()) outputFile.delete()
+
+        // Comando FFmpeg para generar una imagen del espectro de audio
+        val command = "-y -i \"${videoFile.absolutePath}\" -filter_complex \"aformat=channel_layouts=mono,showwavespic=s=${widthPx}x80:colors=#00BFFF\" -frames:v 1 \"${outputFile.absolutePath}\""
+
+        FFmpegKit.executeAsync(command, { session ->
+            if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists()) {
+                val bitmap = android.graphics.BitmapFactory.decodeFile(outputFile.absolutePath)
+                requireActivity().runOnUiThread {
+                    // El waveform se agrega al MISMO canvas que el filmstrip: no hay
+                    // una segunda vista que pueda desincronizarse.
+                    _binding?.homeContent?.filmstripTimeline?.setWaveform(bitmap)
+                }
+            }
+            videoFile.delete()
+        })
+    }
+
 
     private fun getFontDir(): File {
         val fontDir = File(requireContext().cacheDir, "subtitle_fonts").apply { if (!exists()) mkdirs() }
@@ -1172,10 +1513,10 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     }
 
     private fun setPlayPauseIcon(isPlaying: Boolean) {
-        val sizePx = (18 * resources.displayMetrics.density).toInt() 
+        val sizePx = (18 * resources.displayMetrics.density).toInt()
         val icon = ContextCompat.getDrawable(requireContext(), if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play_arrow)
         icon?.setBounds(0, 0, sizePx, sizePx)
-        binding.homeContent.btnPlayPause.text = null 
+        binding.homeContent.btnPlayPause.text = null
         binding.homeContent.btnPlayPause.setCompoundDrawables(null, icon, null, null)
         binding.homeContent.btnPlayPause.gravity = android.view.Gravity.CENTER
         binding.homeContent.btnPlayPause.setPadding(0, 0, 0, 0)
@@ -1192,13 +1533,13 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         val heightPx = (heightDp * density).toInt()
         val icon = ContextCompat.getDrawable(requireContext(), drawableRes)
         icon?.setBounds(0, 0, widthPx, heightPx)
-        button.setAllCaps(false); button.maxLines = 1 
+        button.setAllCaps(false); button.maxLines = 1
         if (button.text.isNullOrEmpty()) {
             button.text = null; button.setCompoundDrawables(null, icon, null, null); button.gravity = android.view.Gravity.CENTER; button.setPadding(0, 0, 0, 0); button.compoundDrawablePadding = 0
             button.post { val verticalPad = ((button.height - heightPx) / 2).coerceAtLeast(0); button.setPadding(0, verticalPad, 0, verticalPad) }
         } else {
             button.setCompoundDrawables(null, icon, null, null)
-            val verticalPaddingPx = (1.5 * density).toInt() 
+            val verticalPaddingPx = (1.5 * density).toInt()
             button.compoundDrawablePadding = (0.8 * density).toInt()
             button.setPadding(0, verticalPaddingPx, 0, verticalPaddingPx); button.gravity = android.view.Gravity.CENTER
         }
@@ -1229,7 +1570,18 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
-        super.onConfigurationChanged(newConfig); val isLandscape = newConfig.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE; val visibility = if (isLandscape) View.GONE else View.VISIBLE; binding.appBarLayout.visibility = visibility; binding.homeContent.btnOpenFile.visibility = visibility; binding.homeContent.btnLoadSubtitles.visibility = visibility; binding.homeContent.btnChooseFolder.visibility = visibility
+        super.onConfigurationChanged(newConfig);
+        val isLandscape = newConfig.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val visibility = if (isLandscape) View.GONE else View.VISIBLE
+
+        // Recalcular el padding derecho de la timeline para el nuevo ancho de pantalla
+        // (el padding derecho es lo que permite scrollear hasta que el último frame
+        // llegue al indicador fijo de la izquierda).
+        if (binding.homeContent.hsvFilmstrip.visibility == View.VISIBLE) {
+            binding.homeContent.hsvFilmstrip.setPadding(0, 0, resources.displayMetrics.widthPixels, 0)
+        }
+
+        binding.appBarLayout.visibility = visibility
         val playbackVisibility = if (isLandscape && !isFullscreen) View.GONE else View.VISIBLE; binding.homeContent.videoSeekBar.visibility = playbackVisibility; binding.homeContent.btnPrevVideo.parent.let { if (it is View) it.visibility = playbackVisibility }; binding.homeContent.tvCurrentTime.parent.let { if (it is View) it.visibility = playbackVisibility }
         if (!isFullscreen) { binding.homeContent.videoContainer.layoutParams.height = if (isLandscape) ViewGroup.LayoutParams.MATCH_PARENT else (250 * resources.displayMetrics.density).toInt(); binding.homeContent.videoPlayer.resizeMode = if (isLandscape) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT }
         else { binding.homeContent.videoContainer.layoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT; binding.homeContent.videoContainer.layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT; binding.homeContent.videoPlayer.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL }
@@ -1238,12 +1590,14 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     override fun onMenuItemSelected(item: MenuItem): Boolean = when (item.itemId) { R.id.action_settings -> { findNavController().navigate(R.id.settings_fragment, null, navOptions); true }; R.id.action_import_playlist -> { ImportPlaylistDialog().show(childFragmentManager, "ImportPlaylist"); true }; R.id.action_add_to_playlist -> { CreatePlaylistDialog.create(emptyList()).show(childFragmentManager, "ShowCreatePlaylistDialog"); true }; else -> false }
     override fun onPrepareMenu(menu: Menu) { super.onPrepareMenu(menu); ToolbarContentTintHelper.handleOnPrepareOptionsMenu(requireActivity(), binding.appBarLayout.toolbar) }
     override fun onPause() { super.onPause(); exoPlayer?.let { savedPosition = it.currentPosition.toInt() } }
-    override fun onResume() { super.onResume(); checkForMargins(); exitTransition = null; if (_binding != null && videoPlaylist.isNotEmpty() && savedPosition > 0) { exoPlayer?.apply { seekTo(savedPosition.toLong()); if (wasPlayingBeforePause) { play(); setPlayPauseIcon(true) } } } }
+    override fun onResume() { super.onResume(); checkForMargins(); exitTransition = null; refrescarListaVideos(); if (_binding != null && videoPlaylist.isNotEmpty() && savedPosition > 0) { exoPlayer?.apply { seekTo(savedPosition.toLong()); if (wasPlayingBeforePause) { play(); setPlayPauseIcon(true) } } } }
 
     override fun onDestroyView() {
         if (isFullscreen) { requireActivity().requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED; WindowCompat.getInsetsController(requireActivity().window, requireActivity().window.decorView).show(WindowInsetsCompat.Type.systemBars()); mainActivity.setBottomNavVisibility(visible = true, hideBottomSheet = false) }
-        exoPlayer?.let { if (it.isPlaying) savedPosition = it.currentPosition.toInt(); it.release() }; exoPlayer = null; handler.removeCallbacks(updateSubtitleTask); _binding = null; super.onDestroyView()
+        exoPlayer?.let { if (it.isPlaying) savedPosition = it.currentPosition.toInt(); it.release() }; exoPlayer = null; handler.removeCallbacks(updateSubtitleTask); handler.removeCallbacks(hideResolutionRunnable); _binding = null; super.onDestroyView()
     }
+
+
 
     private fun createMkvWithSubtitles(videoUri: Uri, subtitleUri: Uri, audioUri: Uri? = null) {
         val videoFile = cacheUriToFile(videoUri, "input_video.mp4"); val subFile = cacheUriToFile(subtitleUri, "input_sub.srt"); val fileName = "Video_Subtitulado_${System.currentTimeMillis()}.mkv"; val contentValues = ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, fileName); put(MediaStore.MediaColumns.MIME_TYPE, "video/x-matroska"); if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/0 VIDEO") }
@@ -1258,7 +1612,50 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             }, { stats -> actualizarProgreso(stats.time, duration) })
         }
     }
+    private fun hardcodearSubtitulosAss() {
+        val subUri = selectedAssSubtitleUri
+        if (videoPlaylist.isEmpty() || subUri == null) {
+            Toast.makeText(requireContext(), R.string.selecciona_video_y_srt, Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(requireContext(), R.string.incrustando_subtitulos_msg, Toast.LENGTH_LONG).show()
+        val videoUri = videoPlaylist[currentIndex]
+        val duration = getMediaDuration(videoUri)
+        mostrarProgreso(duration)
 
+        Thread {
+            val originalName = requireContext().contentResolver.query(videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
+            val fileName = "${originalName.substringBeforeLast(".")}_ass.mp4"
+
+            val ext = requireContext().contentResolver.getType(subUri)?.let {
+                if (it.contains("ass")) "ass" else "srt"
+            } ?: "srt"
+
+            val videoFile = cacheUriToFile(videoUri, "input_ass.mp4")
+            val subFile = cacheUriToFile(subUri, "input_sub_ass.$ext")
+            val outputFile = File(requireContext().cacheDir, "output_ass.mp4")
+            if (outputFile.exists()) outputFile.delete()
+
+            // fontsdir apunta a la misma carpeta que ya usas para drawtext (getFontDir()),
+            // así libass encuentra las fuentes sin necesitar FFmpegKitConfig.
+            val vFilter = "subtitles=${subFile.absolutePath}:fontsdir=${getFontDir().absolutePath}"
+            val command = "-y -i \"${videoFile.absolutePath}\" -vf \"$vFilter\" -c:v h264_mediacodec -b:v 2M -c:a copy \"${outputFile.absolutePath}\""
+
+            FFmpegKit.executeAsync(command, { session ->
+                Log.d("FFmpegAssSubs", session.allLogsAsString) // log siempre, no solo en el else
+                if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
+                    saveToDownloads(outputFile, fileName)
+                } else {
+                    Log.e("FFmpegAssSubs", session.allLogsAsString)
+                }
+                ocultarProgreso()
+                videoFile.delete()
+                subFile.delete()
+                if (outputFile.exists()) outputFile.delete()
+            }, { stats -> actualizarProgreso(stats.time, duration) })
+        }.start()
+    }
     private fun hardcodearSubtitulos() {
         val subUri = selectedSubtitleUri; if (videoPlaylist.isEmpty() || subUri == null) { Toast.makeText(requireContext(), R.string.selecciona_video_y_srt, Toast.LENGTH_SHORT).show(); return }
         Toast.makeText(requireContext(), R.string.incrustando_subtitulos_msg, Toast.LENGTH_LONG).show(); requireActivity().runOnUiThread { mostrarProgreso() }

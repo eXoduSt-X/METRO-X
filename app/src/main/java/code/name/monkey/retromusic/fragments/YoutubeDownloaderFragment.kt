@@ -88,7 +88,7 @@ class YoutubeDownloaderFragment : Fragment(R.layout.fragment_youtube_downloader)
             // YouTube suele separar el video de alta calidad del audio
             it.vcodec != "none" && it.height > 0
         }?.distinctBy { it.height } // Evitamos duplicados de la misma resolución
-         ?.sortedByDescending { it.height } ?: emptyList()
+            ?.sortedByDescending { it.height } ?: emptyList()
 
         if (formats.isEmpty()) {
             viewModel.download(info.webpageUrl ?: info.url!!, info.title ?: "Video", null, true)
