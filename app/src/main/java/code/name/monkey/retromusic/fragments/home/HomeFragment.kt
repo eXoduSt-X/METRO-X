@@ -968,6 +968,12 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                     }
                     binding.homeContent.etSubtitleWorkshop.setText(lrcStyleText.toString())
                 }
+                binding.homeContent.btnWorkshopExportAss.setOnClickListener {
+                    exportWorkshopToAss()
+                }
+                binding.homeContent.cbWorkshopMtvInfo.setOnCheckedChangeListener { _, isChecked ->
+                    binding.homeContent.mtvInfoRow.visibility = if (isChecked) View.VISIBLE else View.GONE
+                }
             }
         }
 
@@ -1043,40 +1049,143 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             (minutes * 60 * 1000) + (seconds * 1000) + (hundredths * 10)
         } catch (e: Exception) { 0 }
     }
+    private data class WorkshopEntry(val startMs: Int, val endMs: Int, val text: String, val translation: String? = null)
 
-    private fun exportWorkshopToSrt() {
+    private fun buildWorkshopEntries(): List<WorkshopEntry> {
         val text = binding.homeContent.etSubtitleWorkshop.text.toString()
-        if (text.isBlank()) return
+        if (text.isBlank()) return emptyList()
+
+        val stampRegex = "\\[(\\d{2}:\\d{2}\\.\\d{2})\\]".toRegex()
+
+        val translationLines = binding.homeContent.etSubtitleWorkshopTranslation.text.toString()
+            .split("\n").filter { it.isNotBlank() }
+            .map { it.replace(stampRegex, "").trim() }  // <- limpia el timestamp también aquí
 
         val lines = text.split("\n").filter { it.isNotBlank() }
-        val srtContent = StringBuilder()
-        
-        val stampRegex = "\\[(\\d{2}:\\d{2}\\.\\d{2})\\]".toRegex()
+        val entries = mutableListOf<WorkshopEntry>()
+        var entryIndex = 0
 
         for (i in lines.indices) {
             val currentLine = lines[i]
             val match = stampRegex.find(currentLine) ?: continue
             val startTimeMs = lrcTimeToMs(match.value)
-            
-            // El tiempo final es el inicio de la siguiente línea o +2 segundos si es la última
             val endTimeMs = if (i < lines.size - 1) {
                 val nextMatch = stampRegex.find(lines[i + 1])
                 if (nextMatch != null) lrcTimeToMs(nextMatch.value) else startTimeMs + 2000
-            } else {
-                startTimeMs + 2000
-            }
-
+            } else startTimeMs + 2000
             val subtitleText = currentLine.replace(stampRegex, "").trim()
-            
-            srtContent.append("${i + 1}\n")
-            srtContent.append("${formatTimeSrt(startTimeMs)} --> ${formatTimeSrt(endTimeMs)}\n")
-            srtContent.append("$subtitleText\n\n")
+            val translation = translationLines.getOrNull(entryIndex)
+            entries.add(WorkshopEntry(startTimeMs, endTimeMs, subtitleText, translation))
+            entryIndex++
+        }
+        return entries
+    }
+    private fun exportWorkshopToSrt() {
+        val entries = buildWorkshopEntries()
+        if (entries.isEmpty()) return
+
+        val srtContent = StringBuilder()
+        entries.forEachIndexed { index, entry ->
+            srtContent.append("${index + 1}\n")
+            srtContent.append("${formatTimeSrt(entry.startMs)} --> ${formatTimeSrt(entry.endMs)}\n")
+            srtContent.append("${entry.text}\n\n")
         }
 
         val fileName = "Workshop_${System.currentTimeMillis()}.srt"
         val tempFile = File(requireContext().cacheDir, fileName)
         tempFile.writeText(srtContent.toString())
         saveToDownloads(tempFile, fileName, "text/plain")
+    }
+
+    private fun getVideoResolution(uri: Uri): Pair<Int, Int> {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(requireContext(), uri)
+            val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 640
+            val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 360
+            Pair(w, h)
+        } catch (e: Exception) {
+            Pair(640, 360)
+        } finally {
+            retriever.release()
+        }
+    }
+
+    private fun exportWorkshopToAss() {
+        val entries = buildWorkshopEntries()
+        if (entries.isEmpty()) {
+            Toast.makeText(requireContext(), "No hay texto con timestamps para exportar", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val (playResX, playResY) = if (videoPlaylist.isNotEmpty()) {
+            getVideoResolution(videoPlaylist[currentIndex])
+        } else {
+            Pair(640, 360)
+        }
+        // Tamaño proporcional al alto real del video, no un número fijo.
+// ~6% del alto para el texto principal (estándar legible en subtítulos),
+// ~4.5% para el watermark (más discreto). Clamps para evitar extremos
+// en resoluciones muy chicas o muy grandes.
+        val subtitleFontSize = (playResY * 0.06).toInt().coerceIn(16, 60)
+        val watermarkFontSize = (playResY * 0.045).toInt().coerceIn(12, 45)
+        val addMtvInfo = binding.homeContent.cbWorkshopMtvInfo.isChecked
+        val artist = binding.homeContent.etMtvArtist.text.toString().trim()
+        val song = binding.homeContent.etMtvSong.text.toString().trim()
+        val album = binding.homeContent.etMtvYear.text.toString().trim()
+
+        fun msToAss(ms: Int): String {
+            val totalSeconds = ms / 1000
+            val h = totalSeconds / 3600
+            val m = (totalSeconds % 3600) / 60
+            val s = totalSeconds % 60
+            val centis = (ms % 1000) / 10
+            return String.format(Locale.getDefault(), "%d:%02d:%02d.%02d", h, m, s, centis)
+        }
+
+        val ass = StringBuilder()
+        ass.append("[Script Info]\n")
+        ass.append("Title: Workshop Export\n")
+        ass.append("ScriptType: v4.00+\n")
+        ass.append("PlayResX: $playResX\n")
+        ass.append("PlayResY: $playResY\n")
+        ass.append("WrapStyle: 0\n")
+        ass.append("ScaledBorderAndShadow: yes\n\n")
+        ass.append("[V4+ Styles]\n")
+        ass.append("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
+        // Original: abajo, blanco
+        ass.append("Style: Original,Roboto,$subtitleFontSize,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,20,20,25,1\n")
+        ass.append("Style: Translation,Roboto,$subtitleFontSize,&H0000FFFF,&H000000FF,&H00000000,&H00000000,0,-1,0,0,100,100,0,0,1,2,1,8,20,20,15,1\n")
+        if (addMtvInfo) {
+            ass.append("Style: Watermark,Roboto,$watermarkFontSize,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,1,20,10,20,1\n")
+        }
+        ass.append("\n[Events]\n")
+        ass.append("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+
+        if (addMtvInfo && (artist.isNotBlank() || song.isNotBlank() || album.isNotBlank())) {
+            val watermarkLines = listOfNotNull(
+                artist.takeIf { it.isNotBlank() },
+                song.takeIf { it.isNotBlank() },
+                album.takeIf { it.isNotBlank() }
+            )
+            val watermarkText = watermarkLines.joinToString("\\N") // \N = salto de línea duro en ASS
+            ass.append("Dialogue: 0,${msToAss(3000)},${msToAss(8000)},Watermark,,0,0,0,,$watermarkText\n")
+        }
+
+        entries.forEach { entry ->
+            val start = msToAss(entry.startMs)
+            val end = msToAss(entry.endMs)
+            ass.append("Dialogue: 0,$start,$end,Original,,0,0,0,,${entry.text}\n")
+            if (!entry.translation.isNullOrBlank()) {
+                ass.append("Dialogue: 0,$start,$end,Translation,,0,0,0,,${entry.translation}\n")
+            }
+        }
+
+        val fileName = "Workshop_${System.currentTimeMillis()}.ass"
+        val tempFile = File(requireContext().cacheDir, fileName)
+        tempFile.writeText(ass.toString())
+        saveToDownloads(tempFile, fileName, "application/octet-stream")
+        Toast.makeText(requireContext(), "ASS exportado (${playResX}x${playResY})", Toast.LENGTH_SHORT).show()
     }
 
     private fun formatTimeSrt(millis: Int): String {

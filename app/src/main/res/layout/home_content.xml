@@ -514,7 +514,78 @@
                 android:layout_marginTop="4dp"
                 android:scrollbars="vertical"
                 android:inputType="textMultiLine" />
+            <EditText
+                android:id="@+id/etSubtitleWorkshopTranslation"
+                android:layout_width="match_parent"
+                android:layout_height="100dp"
+                android:hint="Traducción (opcional) — una línea por cada línea del original, en el mismo orden"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#777777"
+                android:textSize="12sp"
+                android:gravity="top"
+                android:background="#333333"
+                android:padding="8dp"
+                android:layout_marginTop="4dp"
+                android:scrollbars="vertical"
+                android:inputType="textMultiLine" />
 
+            <CheckBox
+                android:id="@+id/cbWorkshopMtvInfo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Agregar info tipo MTV (opcional)"
+                android:textColor="#AAAAAA"
+                android:textSize="10sp"
+                android:layout_marginTop="8dp" />
+
+            <LinearLayout
+                android:id="@+id/mtvInfoRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:visibility="gone"
+                android:layout_marginTop="4dp">
+
+                <EditText
+                    android:id="@+id/etMtvArtist"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="36dp"
+                    android:hint="Artista"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#777777"
+                    android:textSize="10sp"
+                    android:backgroundTint="#333333"
+                    android:layout_marginEnd="2dp"
+                    android:padding="4dp" />
+
+                <EditText
+                    android:id="@+id/etMtvSong"
+                    android:layout_width="0dp"
+                    android:layout_weight="1.4"
+                    android:layout_height="36dp"
+                    android:hint="Canción"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#777777"
+                    android:textSize="10sp"
+                    android:backgroundTint="#333333"
+                    android:layout_marginHorizontal="2dp"
+                    android:padding="4dp" />
+
+                <EditText
+                    android:id="@+id/etMtvYear"
+                    android:layout_width="0dp"
+                    android:layout_weight="0.6"
+                    android:layout_height="36dp"
+                    android:hint="Álbum"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#777777"
+                    android:textSize="10sp"
+                    android:inputType="text"
+                    android:backgroundTint="#333333"
+                    android:layout_marginStart="2dp"
+                    android:padding="4dp" />
+            </LinearLayout>
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
@@ -554,6 +625,17 @@
                     android:padding="0dp"
                     android:minHeight="0dp"
                     android:backgroundTint="#6200EE" />
+                <Button
+                    android:id="@+id/btnWorkshopExportAss"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:text="→ ASS"
+                    android:textSize="10sp"
+                    android:padding="0dp"
+                    android:minHeight="0dp"
+                    android:backgroundTint="#1976D2"
+                    android:layout_marginStart="4dp" />
             </LinearLayout>
         </LinearLayout>
 
