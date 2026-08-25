@@ -4,7 +4,7 @@
     <color name="window_color">@color/md_white_1000</color>
     <color name="window_color_light">@color/md_white_1000</color>
     <color name="window_color_dark">@android:color/black</color>
-    <color name="md_blue_A200">#40C4FF</color> <!-- O el código HEX del azul que prefieras -->
+    <color name="md_blue_A200">#40C4FF</color>
     
     <color name="twenty_percent_black_overlay">#34000000</color>
     <color name="app_shortcut_default_foreground">#607d8b</color>

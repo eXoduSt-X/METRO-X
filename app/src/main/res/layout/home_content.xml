@@ -146,91 +146,76 @@
         <LinearLayout
             android:id="@+id/cutRow"
             android:layout_width="match_parent"
-            android:layout_height="32dp"
+            android:layout_height="36dp"
             android:orientation="horizontal"
             android:layout_marginTop="12dp">
-            <Button
-                android:id="@+id/btnMergeVideos"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1.2"
-                android:layout_marginHorizontal="2dp"
-                android:backgroundTint="#333333"
-                android:textColor="#FFFFFF"
-                android:text="UNIR"
-                android:padding="0dp"
-                android:minHeight="0dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:textAllCaps="false"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:gravity="center"
-                android:textSize="8sp" />
+
             <Button
                 android:id="@+id/btnSetStart"
                 android:layout_width="wrap_content"
-                android:layout_height="32dp"
+                android:layout_height="36dp"
                 android:minWidth="0dp"
-                android:paddingHorizontal="8dp"
+                android:paddingHorizontal="6dp"
                 android:backgroundTint="#333333"
                 android:text="@string/open_bracket"
                 android:textSize="10sp"
                 style="?android:attr/buttonBarButtonStyle"
-                android:layout_marginHorizontal="3dp"
+                android:layout_marginHorizontal="1dp"
                 android:layout_gravity="center_vertical"
                 android:textColor="#FFFFFF"
                 android:insetTop="0dp"
                 android:insetBottom="0dp" />
+
             <EditText
                 android:id="@+id/etStartTime"
                 android:layout_width="0dp"
-                android:layout_weight="1.3"
-                android:layout_height="32dp"
+                android:layout_weight="0.9"
+                android:layout_height="36dp"
                 android:hint="@string/inicio"
                 android:textColor="#FFFFFF"
                 android:textColorHint="#777777"
-                android:textSize="10sp"
+                android:textSize="9sp"
                 android:inputType="text"
                 android:autofillHints="none"
                 android:backgroundTint="#333333"
                 android:layout_gravity="center_vertical"
-                android:padding="4dp" />
+                android:padding="2dp" />
 
             <EditText
                 android:id="@+id/etEndTime"
                 android:layout_width="0dp"
-                android:layout_weight="1.3"
-                android:layout_height="32dp"
+                android:layout_weight="0.9"
+                android:layout_height="36dp"
                 android:hint="@string/fin"
                 android:textColor="#FFFFFF"
                 android:textColorHint="#777777"
-                android:textSize="10sp"
+                android:textSize="9sp"
                 android:inputType="text"
                 android:autofillHints="none"
                 android:backgroundTint="#333333"
                 android:layout_gravity="center_vertical"
-                android:padding="4dp" />
+                android:padding="2dp" />
+
             <Button
                 android:id="@+id/btnSetEnd"
                 android:layout_width="wrap_content"
-                android:layout_height="32dp"
+                android:layout_height="36dp"
                 android:minWidth="0dp"
-                android:paddingHorizontal="8dp"
+                android:paddingHorizontal="6dp"
                 android:backgroundTint="#333333"
                 android:text="@string/close_bracket"
                 android:textSize="10sp"
                 style="?android:attr/buttonBarButtonStyle"
-                android:layout_marginStart="3dp"
-                android:layout_marginEnd="3dp"
+                android:layout_marginHorizontal="1dp"
                 android:layout_gravity="center_vertical"
                 android:textColor="#FFFFFF"
                 android:insetTop="0dp"
                 android:insetBottom="0dp" />
+
             <Button
                 android:id="@+id/btnSplit"
                 android:layout_width="0dp"
-                android:layout_weight="1.2"
+                android:layout_weight="0.85"
                 android:layout_height="match_parent"
                 android:backgroundTint="#333333"
                 android:text="CORTAR"
@@ -243,9 +228,77 @@
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:gravity="center"
-                android:textSize="8sp" />
+                android:textSize="7sp" />
+
+            <EditText
+                android:id="@+id/etFadeInDuration"
+                android:layout_width="0dp"
+                android:layout_weight="0.55"
+                android:layout_height="36dp"
+                android:hint="In"
+                android:text="0"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#777777"
+                android:textSize="9sp"
+                android:gravity="center"
+                android:inputType="numberDecimal"
+                android:autofillHints="none"
+                android:backgroundTint="#333333"
+                android:layout_gravity="center_vertical"
+                android:padding="2dp" />
+
+            <EditText
+                android:id="@+id/etFadeOutDuration"
+                android:layout_width="0dp"
+                android:layout_weight="0.55"
+                android:layout_height="36dp"
+                android:hint="Out"
+                android:text="0"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#777777"
+                android:textSize="9sp"
+                android:gravity="center"
+                android:inputType="numberDecimal"
+                android:autofillHints="none"
+                android:backgroundTint="#333333"
+                android:layout_gravity="center_vertical"
+                android:padding="2dp" />
+
+            <Button
+                android:id="@+id/btnApplyFade"
+                android:layout_width="0dp"
+                android:layout_weight="0.5"
+                android:layout_height="match_parent"
+                android:layout_marginHorizontal="1dp"
+                android:backgroundTint="#333333"
+                android:text=""
+                android:padding="0dp"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp" />
+
+            <Button
+                android:id="@+id/btnMergeVideos"
+                android:layout_width="0dp"
+                android:layout_weight="0.85"
+                android:layout_height="match_parent"
+                android:layout_marginHorizontal="1dp"
+                android:backgroundTint="#333333"
+                android:textColor="#FFFFFF"
+                android:text="UNIR"
+                android:padding="0dp"
+                android:minHeight="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:textAllCaps="false"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:gravity="center"
+                android:textSize="7sp" />
 
         </LinearLayout>
+
         <LinearLayout
             android:id="@+id/toolsRow"
             android:layout_width="match_parent"
@@ -253,233 +306,29 @@
             android:orientation="horizontal"
             android:layout_marginTop="4dp">
 
-            <Button android:id="@+id/btnMixVideo" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#6200EE" android:text="MULTIPLEX" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
-            <Button android:id="@+id/btnFullscreen" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="REMUX" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
-            <Button android:id="@+id/btnLoadSubtitles" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="SUBS" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
-            <Button android:id="@+id/btnSubtitleWorkshop" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="WORKSHOP" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
-            <Button android:id="@+id/btnOpenFile" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="VIDEO" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
             <Button android:id="@+id/btnChooseFolder" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="CARPETA" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
+            <Button android:id="@+id/btnOpenFile" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="VIDEO" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
+            <Button android:id="@+id/btnCreateGif" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="→ GIF" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
+            <Button android:id="@+id/btnCreateVideoFromPhotos" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="SLIDESHOW" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
+            <Button android:id="@+id/btnTagEditor" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="MP3TAG" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
+            <Button android:id="@+id/btnConvertAudio" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="→ MP3" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
+
         </LinearLayout>
+
         <LinearLayout
             android:id="@+id/extraActionsContainer"
             android:layout_width="match_parent"
             android:layout_height="32dp"
             android:orientation="horizontal"
-            android:weightSum="5"
-            android:layout_marginTop="8dp">
+            android:layout_marginTop="4dp">
 
-            <Button
-                android:id="@+id/btnConvertAudio"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:layout_marginHorizontal="2dp"
-                android:backgroundTint="#333333"
-                android:text="→ MP3"
-                android:padding="0dp"
-                android:minHeight="0dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:textAllCaps="false"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:textSize="8sp"
-                android:textColor="#FFFFFF"
-                android:gravity="center" />
+            <Button android:id="@+id/btnLoadSubtitles" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="SUBS" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
+            <Button android:id="@+id/btnHardcodeSubtitles" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:textColor="#FFFFFF" android:text="WRITE" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" />
+            <Button android:id="@+id/btnHardcodeAssSubtitles" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:textColor="#FFFFFF" android:text="ASS" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" />
+            <Button android:id="@+id/btnSubtitleWorkshop" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="WORKSHOP" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
+            <Button android:id="@+id/btnFullscreen" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="REMUX" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
+            <Button android:id="@+id/btnMixVideo" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#6200EE" android:text="MULTIPLEX" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
 
-            <Button
-                android:id="@+id/btnHardcodeSubtitles"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:layout_marginHorizontal="2dp"
-                android:backgroundTint="#333333"
-                android:textColor="#FFFFFF"
-                android:text="WRITE"
-                android:padding="0dp"
-                android:minHeight="0dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:textAllCaps="false"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:gravity="center"
-                android:textSize="8sp" />
-
-            <Button
-                android:id="@+id/btnCreateVideoFromPhotos"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:layout_marginHorizontal="2dp"
-                android:backgroundTint="#333333"
-                android:textColor="#FFFFFF"
-                android:text="SLIDESHOW"
-                android:padding="0dp"
-                android:minHeight="0dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:textAllCaps="false"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:gravity="center"
-                android:textSize="8sp" />
-
-            <Button
-                android:id="@+id/btnCreateGif"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:layout_marginHorizontal="2dp"
-                android:backgroundTint="#333333"
-                android:textColor="#FFFFFF"
-                android:text="→ GIF"
-                android:padding="0dp"
-                android:minHeight="0dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:textAllCaps="false"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:gravity="center"
-                android:textSize="8sp" />
-
-            <Button
-                android:id="@+id/btnTagEditor"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:layout_marginHorizontal="2dp"
-                android:backgroundTint="#333333"
-                android:textColor="#FFFFFF"
-                android:text="MP3TAG"
-                android:padding="0dp"
-                android:minHeight="0dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:textAllCaps="false"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:gravity="center"
-                android:textSize="8sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/assSubsRow"
-            android:layout_width="match_parent"
-            android:layout_height="32dp"
-            android:orientation="horizontal"
-            android:layout_marginTop="8dp">
-
-            <Button
-                android:id="@+id/btnHardcodeAssSubtitles"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:layout_marginHorizontal="2dp"
-                android:backgroundTint="#333333"
-                android:textColor="#FFFFFF"
-                android:text="SUBS SRT/ASS (estilos)"
-                android:padding="0dp"
-                android:minHeight="0dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:textAllCaps="false"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:gravity="center"
-                android:textSize="8sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/fadeRow"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="8dp">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginHorizontal="2dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="FADE IN"
-                    android:textColor="#AAAAAA"
-                    android:textSize="8sp"
-                    android:gravity="center"
-                    android:layout_marginBottom="2dp" />
-
-                <EditText
-                    android:id="@+id/etFadeInDuration"
-                    android:layout_width="match_parent"
-                    android:layout_height="32dp"
-                    android:hint="Segundos"
-                    android:text="0"
-                    android:textColor="#FFFFFF"
-                    android:textColorHint="#777777"
-                    android:textSize="10sp"
-                    android:gravity="center"
-                    android:inputType="numberDecimal"
-                    android:autofillHints="none"
-                    android:backgroundTint="#333333"
-                    android:padding="4dp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginHorizontal="2dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="FADE OUT"
-                    android:textColor="#AAAAAA"
-                    android:textSize="8sp"
-                    android:gravity="center"
-                    android:layout_marginBottom="2dp" />
-
-                <EditText
-                    android:id="@+id/etFadeOutDuration"
-                    android:layout_width="match_parent"
-                    android:layout_height="32dp"
-                    android:hint="Segundos"
-                    android:text="0"
-                    android:textColor="#FFFFFF"
-                    android:textColorHint="#777777"
-                    android:textSize="10sp"
-                    android:gravity="center"
-                    android:inputType="numberDecimal"
-                    android:autofillHints="none"
-                    android:backgroundTint="#333333"
-                    android:padding="4dp" />
-            </LinearLayout>
-
-            <Button
-                android:id="@+id/btnApplyFade"
-                android:layout_width="0dp"
-                android:layout_height="32dp"
-                android:layout_weight="1.2"
-                android:layout_marginHorizontal="2dp"
-                android:layout_gravity="bottom"
-                android:backgroundTint="#333333"
-                android:textColor="#FFFFFF"
-                android:text="APLICAR FADE"
-                android:padding="0dp"
-                android:minHeight="0dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:textAllCaps="false"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:gravity="center"
-                android:textSize="8sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -537,6 +386,26 @@
                 android:textColor="#AAAAAA"
                 android:textSize="10sp"
                 android:layout_marginTop="8dp" />
+
+            <CheckBox
+                android:id="@+id/cbOriginalItalic"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Original en itálica"
+                android:textColor="#AAAAAA"
+                android:textSize="10sp"
+                android:checked="false"
+                android:layout_marginTop="4dp" />
+
+            <CheckBox
+                android:id="@+id/cbTranslationItalic"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Traducción en itálica"
+                android:textColor="#AAAAAA"
+                android:textSize="10sp"
+                android:checked="false"
+                android:layout_marginTop="4dp" />
 
             <LinearLayout
                 android:id="@+id/mtvInfoRow"

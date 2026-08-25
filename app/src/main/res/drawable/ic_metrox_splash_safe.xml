@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Aumentamos un 20% adicional (de 72dp a 86dp) para buscar el tamaño máximo antes del recorte -->
+    <item
+        android:width="86dp"
+        android:height="86dp"
+        android:gravity="center">
+        <bitmap
+            android:src="@drawable/ic_metrox_splash_final"
+            android:gravity="fill" />
+    </item>
+</layer-list>

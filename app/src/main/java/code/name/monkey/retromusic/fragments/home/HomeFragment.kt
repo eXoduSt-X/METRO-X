@@ -708,6 +708,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         setFixedIcon(binding.homeContent.btnCreateGif, R.drawable.ic_gif)
         setFixedIcon(binding.homeContent.btnYoutubeDownload, R.drawable.ic_youtube, 130, 29)
         setFixedIcon(binding.homeContent.btnTagEditor, R.drawable.ic_dashboard)
+        setFixedIcon(binding.homeContent.btnApplyFade, R.drawable.ic_unir)
         setPlayPauseIcon(false)
 
         fullscreenGestureDetector = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
@@ -1133,6 +1134,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         val artist = binding.homeContent.etMtvArtist.text.toString().trim()
         val song = binding.homeContent.etMtvSong.text.toString().trim()
         val album = binding.homeContent.etMtvYear.text.toString().trim()
+        val originalItalic = if (binding.homeContent.cbOriginalItalic.isChecked) -1 else 0
+        val translationItalic = if (binding.homeContent.cbTranslationItalic.isChecked) -1 else 0
 
         fun msToAss(ms: Int): String {
             val totalSeconds = ms / 1000
@@ -1154,8 +1157,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         ass.append("[V4+ Styles]\n")
         ass.append("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
         // Original: abajo, blanco
-        ass.append("Style: Original,Roboto,$subtitleFontSize,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,20,20,25,1\n")
-        ass.append("Style: Translation,Roboto,$subtitleFontSize,&H0000FFFF,&H000000FF,&H00000000,&H00000000,0,-1,0,0,100,100,0,0,1,2,1,8,20,20,15,1\n")
+        ass.append("Style: Original,Roboto,$subtitleFontSize,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,$originalItalic,0,0,100,100,0,0,1,2,1,2,20,20,25,1\n")
+        ass.append("Style: Translation,Roboto,$subtitleFontSize,&H0000FFFF,&H000000FF,&H00000000,&H00000000,0,$translationItalic,0,0,100,100,0,0,1,2,1,8,20,20,15,1\n")
         if (addMtvInfo) {
             ass.append("Style: Watermark,Roboto,$watermarkFontSize,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,1,20,10,20,1\n")
         }

@@ -30,7 +30,9 @@
     </style>
 
     <style name="Theme.RetroMusic.SplashScreen" parent="Theme.SplashScreen">
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_new</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_metrox_splash_safe</item>
         <item name="android:windowSplashScreenAnimationDuration">1000</item>
+        <item name="android:windowSplashScreenBackground">@android:color/black</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/black</item>
     </style>
 </resources>
