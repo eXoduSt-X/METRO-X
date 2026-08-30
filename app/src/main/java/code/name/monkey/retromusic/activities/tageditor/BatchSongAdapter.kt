@@ -7,14 +7,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.retromusic.R
-import androidx.documentfile.provider.DocumentFile
 import java.util.Collections
-
-data class BatchSongItem(
-    val document: DocumentFile,
-    var pendingTags: TagFields? = null,
-    val durationText: String? = null
-)
 
 class BatchSongAdapter(private var items: MutableList<BatchSongItem>) :
     RecyclerView.Adapter<BatchSongAdapter.ViewHolder>() {
@@ -33,10 +26,23 @@ class BatchSongAdapter(private var items: MutableList<BatchSongItem>) :
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val item = items[position]
-        holder.tvFilename.text = item.document.name
-        
+
+        // Renderizado especial para huecos vacíos (placeholders)
+        if (item.isPlaceholder) {
+            holder.tvFilename.text = "— Espacio vacío —"
+            holder.tvFilename.setTextColor(0xFF777777.toInt())
+            holder.tvDetails.text = "Pista faltante (no se guarda)"
+            holder.tvDetails.setTextColor(0xFF555555.toInt())
+            holder.itemView.alpha = 0.55f
+            return
+        }
+
+        holder.itemView.alpha = 1f
+        holder.tvFilename.text = item.document?.name ?: "—"
+        holder.tvFilename.setTextColor(0xFFFFFFFF.toInt())
+
         val durationInfo = if (!item.durationText.isNullOrEmpty()) " [${item.durationText}]" else ""
-        
+
         val tags = item.pendingTags
         if (tags != null) {
             val trackInfo = if (!tags.track.isNullOrEmpty()) "${tags.track}. " else ""
