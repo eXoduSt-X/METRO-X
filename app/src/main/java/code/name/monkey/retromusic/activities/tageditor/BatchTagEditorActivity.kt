@@ -1,7 +1,10 @@
 package code.name.monkey.retromusic.activities.tageditor
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -16,9 +19,16 @@ import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.retromusic.databinding.ActivityBatchTagEditorBinding
 import org.koin.androidx.viewmodel.ext.android.viewModel
 import androidx.lifecycle.lifecycleScope
+import code.name.monkey.retromusic.util.FileUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jaudiotagger.audio.AudioFileIO
+import org.jaudiotagger.tag.FieldKey
+import org.jaudiotagger.tag.images.AndroidArtwork
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 
 class BatchTagEditorActivity : AppCompatActivity() {
 
@@ -26,6 +36,16 @@ class BatchTagEditorActivity : AppCompatActivity() {
     private val viewModel: BatchTagEditorViewModel by viewModel()
     private lateinit var adapter: BatchSongAdapter
     private lateinit var metadataAdapter: MetadataReferenceAdapter
+    private var selectedArtBitmap: Bitmap? = null
+
+    private val artPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            contentResolver.openInputStream(it)?.use { stream ->
+                selectedArtBitmap = BitmapFactory.decodeStream(stream)
+                binding.ivAlbumArt.setImageBitmap(selectedArtBitmap)
+            }
+        }
+    }
 
     private val patterns = listOf(
         "%track% - %title%",
@@ -130,6 +150,10 @@ class BatchTagEditorActivity : AppCompatActivity() {
             saveChanges()
         }
 
+        binding.btnSelectArt.setOnClickListener {
+            artPickerLauncher.launch("image/*")
+        }
+
         binding.btnRenameFiles.setOnClickListener {
             renameFiles()
         }
@@ -199,7 +223,105 @@ class BatchTagEditorActivity : AppCompatActivity() {
     }
 
     private fun saveChanges() {
-        Toast.makeText(this, "Tags saved (Simulation)", Toast.LENGTH_SHORT).show()
+        val songs = viewModel.songs.value ?: return
+        if (songs.isEmpty()) {
+            Toast.makeText(this, "No songs to save", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        Toast.makeText(this, "Saving tags and artwork...", Toast.LENGTH_LONG).show()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            var successCount = 0
+            var errorCount = 0
+
+            // Preparar artwork si existe
+            var artworkFile: File? = null
+            if (selectedArtBitmap != null) {
+                try {
+                    artworkFile = File(cacheDir, "temp_batch_art.jpg")
+                    val out = FileOutputStream(artworkFile)
+                    selectedArtBitmap?.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                    out.close()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            songs.forEach { item ->
+                val tags = item.pendingTags
+                // Solo procedemos si hay etiquetas pendientes O si hay una nueva portada
+                if (tags != null || artworkFile != null) {
+                    if (saveItemTags(item, tags, artworkFile)) {
+                        successCount++
+                    } else {
+                        errorCount++
+                    }
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                if (errorCount == 0) {
+                    Toast.makeText(this@BatchTagEditorActivity, "Successfully saved $successCount songs!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@BatchTagEditorActivity, "Saved $successCount, failed $errorCount", Toast.LENGTH_LONG).show()
+                }
+                // Limpiar etiquetas pendientes después de guardar con éxito
+                viewModel.clearPendingTags()
+            }
+        }
+    }
+
+    private fun saveItemTags(item: BatchSongItem, tags: TagFields?, artFile: File?): Boolean {
+        try {
+            val uri = item.document.uri
+            // Creamos un archivo temporal para que jaudiotagger pueda trabajar
+            val tempFile = File.createTempFile("edit", ".tmp", cacheDir)
+            
+            contentResolver.openInputStream(uri)?.use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+
+            val audioFile = AudioFileIO.read(tempFile)
+            val tag = audioFile.tagOrCreateAndSetDefault
+
+            // Aplicar etiquetas si existen
+            tags?.let {
+                if (!it.title.isNullOrBlank()) tag.setField(FieldKey.TITLE, it.title)
+                if (!it.artist.isNullOrBlank()) tag.setField(FieldKey.ARTIST, it.artist)
+                if (!it.album.isNullOrBlank()) tag.setField(FieldKey.ALBUM, it.album)
+                if (!it.track.isNullOrBlank()) tag.setField(FieldKey.TRACK, it.track)
+                if (!it.year.isNullOrBlank()) tag.setField(FieldKey.YEAR, it.year)
+                if (!it.genre.isNullOrBlank()) tag.setField(FieldKey.GENRE, it.genre)
+            }
+
+            // Aplicar Portada si existe
+            artFile?.let {
+                val artwork = AndroidArtwork.createArtworkFromFile(it)
+                tag.deleteArtworkField()
+                tag.setField(artwork)
+            }
+
+            audioFile.commit()
+
+            // Escribir de vuelta al archivo original vía SAF
+            val pfd: ParcelFileDescriptor? = contentResolver.openFileDescriptor(uri, "rw")
+            pfd?.use {
+                val fos = FileOutputStream(it.fileDescriptor)
+                val fis = FileInputStream(tempFile)
+                fos.write(FileUtil.readBytes(fis))
+                fos.close()
+                fis.close()
+            }
+
+            tempFile.delete()
+            return true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        }
     }
 
     private fun renameFiles() {
