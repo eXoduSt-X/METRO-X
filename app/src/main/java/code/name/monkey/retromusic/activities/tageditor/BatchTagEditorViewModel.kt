@@ -48,6 +48,21 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
         _songs.value = currentList
     }
 
+    /**
+     * Numera el campo TRACK de forma secuencial según el orden ACTUAL de la lista
+     * (el que se ve en pantalla, incluyendo cualquier reordenamiento manual por drag).
+     * Padding automático: "01".."09" con 2 dígitos, pasa a 3 dígitos si hay 100+ canciones.
+     */
+    fun numberTracksSequentially() {
+        val currentList = _songs.value?.toMutableList() ?: return
+        val padding = maxOf(2, currentList.size.toString().length)
+        currentList.forEachIndexed { index, item ->
+            val trackNumber = (index + 1).toString().padStart(padding, '0')
+            item.pendingTags = (item.pendingTags ?: TagFields()).copy(track = trackNumber)
+        }
+        _songs.value = currentList
+    }
+
     fun fetchFromMusicBrainz(albumName: String, artistName: String) {
         currentArtist = artistName
         viewModelScope.launch(Dispatchers.IO) {
