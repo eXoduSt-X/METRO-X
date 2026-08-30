@@ -271,7 +271,9 @@
                 android:layout_height="match_parent"
                 android:layout_marginHorizontal="1dp"
                 android:backgroundTint="#333333"
-                android:text=""
+                android:text="FADE"
+                android:textColor="#FFFFFF"
+                android:textSize="7sp"
                 android:padding="0dp"
                 android:minHeight="0dp"
                 android:minWidth="0dp"
@@ -327,7 +329,7 @@
             <Button android:id="@+id/btnHardcodeAssSubtitles" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:textColor="#FFFFFF" android:text="ASS" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" />
             <Button android:id="@+id/btnSubtitleWorkshop" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="WORKSHOP" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
             <Button android:id="@+id/btnFullscreen" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="REMUX" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
-            <Button android:id="@+id/btnMixVideo" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#6200EE" android:text="MULTIPLEX" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
+            <Button android:id="@+id/btnMixVideo" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginHorizontal="2dp" android:backgroundTint="#333333" android:text="MULTIPLEX" android:padding="0dp" android:minHeight="0dp" android:insetTop="0dp" android:insetBottom="0dp" android:textAllCaps="false" android:includeFontPadding="false" android:maxLines="1" android:gravity="center" android:textSize="8sp" android:textColor="#FFFFFF" />
 
         </LinearLayout>
 

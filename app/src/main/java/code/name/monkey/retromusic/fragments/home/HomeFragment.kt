@@ -703,7 +703,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         setFixedIcon(binding.homeContent.btnChooseFolder, R.drawable.ic_vfolder)
         setFixedIcon(binding.homeContent.btnConvertAudio, R.drawable.ic_mp3)
         setFixedIcon(binding.homeContent.btnLoadSubtitles, R.drawable.ic_srt)
-        setFixedIcon(binding.homeContent.btnHardcodeSubtitles, R.drawable.ic_srt)
+        setFixedIcon(binding.homeContent.btnHardcodeSubtitles, R.drawable.ic_srtb)
         setFixedIcon(binding.homeContent.btnHardcodeAssSubtitles, R.drawable.ic_ass)
         setFixedIcon(binding.homeContent.btnSubtitleWorkshop, R.drawable.ic_edit)
         setFixedIcon(binding.homeContent.btnCreateVideoFromPhotos, R.drawable.ic_slide)
