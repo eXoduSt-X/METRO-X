@@ -1,5 +1,7 @@
 package code.name.monkey.retromusic.activities.tageditor
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -8,6 +10,8 @@ import code.name.monkey.retromusic.network.MusicBrainzService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 
 class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService) : ViewModel() {
 
@@ -20,6 +24,10 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
     private val _status = MutableLiveData<String>()
     val status: LiveData<String> = _status
 
+    // Carátula sugerida encontrada junto con la info del álbum
+    private val _suggestedCoverArt = MutableLiveData<Bitmap?>()
+    val suggestedCoverArt: LiveData<Bitmap?> = _suggestedCoverArt
+
     private var currentAlbum: String? = null
     private var currentArtist: String? = null
     private var currentDate: String? = null
@@ -31,6 +39,7 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
     fun applyPattern(pattern: String) {
         val currentList = _songs.value ?: return
         currentList.forEach { item ->
+            if (item.isPlaceholder || item.document == null) return@forEach
             item.pendingTags = PatternEngine.filenameToTags(pattern, item.document.name ?: "")
         }
         _songs.value = currentList
@@ -38,14 +47,34 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
 
     fun sortAlphabetically() {
         val currentList = _songs.value?.toMutableList() ?: return
-        currentList.sortBy { it.document.name }
+        currentList.sortBy { it.document?.name ?: "" }
         _songs.value = currentList
     }
 
     fun clearPendingTags() {
         val currentList = _songs.value?.toMutableList() ?: return
-        currentList.forEach { it.pendingTags = null }
+        // Clear también elimina los huecos vacíos añadidos con "+"
+        val filtered = currentList.filterNot { it.isPlaceholder }
+        filtered.forEach { it.pendingTags = null }
+        _songs.value = filtered
+    }
+
+    /**
+     * Agrega un ítem "placeholder" (sin archivo real) a la lista local.
+     * Sirve para saltar pistas que faltan físicamente pero sí existen en la
+     * metadata del álbum, para no desalinear el resto del orden.
+     */
+    fun addPlaceholder() {
+        val currentList = _songs.value?.toMutableList() ?: mutableListOf()
+        currentList.add(
+            BatchSongItem(
+                document = null,
+                durationText = "--:--",
+                isPlaceholder = true
+            )
+        )
         _songs.value = currentList
+        applyMetadataToCurrentOrder()
     }
 
     /**
@@ -70,21 +99,25 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
                 _status.postValue("Searching $albumName...")
                 val query = "release:\"$albumName\" AND artist:\"$artistName\""
                 val response = musicBrainzService.searchRelease(query)
-                
+
                 val release = response.releases.firstOrNull()
                 if (release != null) {
                     currentAlbum = release.title
                     currentDate = release.date
                     val details = musicBrainzService.getReleaseDetails(release.id)
                     val tracks = details.media?.firstOrNull()?.tracks ?: emptyList()
-                    
+
                     withContext(Dispatchers.Main) {
                         _mbTracks.value = tracks
                         _status.value = "Album found: ${release.title}"
                         applyMetadataToCurrentOrder()
                     }
+
+                    // Busca la carátula en paralelo a la info del álbum
+                    fetchCoverArt(release.id)
                 } else {
                     _status.postValue("No album found")
+                    _suggestedCoverArt.postValue(null)
                 }
             } catch (e: Exception) {
                 _status.postValue("Error: ${e.message}")
@@ -92,10 +125,40 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
         }
     }
 
+    /**
+     * Intenta descargar la carátula del release desde Cover Art Archive
+     * usando el mismo MBID que ya devuelve MusicBrainz. Si no existe, deja
+     * el LiveData en null y la UI simplemente no muestra la miniatura.
+     */
+    private fun fetchCoverArt(releaseId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
+            try {
+                val url = URL("https://coverartarchive.org/release/$releaseId/front-500")
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = true
+                    connectTimeout = 8000
+                    readTimeout = 8000
+                    connect()
+                }
+                if (connection.responseCode in 200..299) {
+                    val bitmap = connection.inputStream.use { BitmapFactory.decodeStream(it) }
+                    _suggestedCoverArt.postValue(bitmap)
+                } else {
+                    _suggestedCoverArt.postValue(null)
+                }
+            } catch (e: Exception) {
+                _suggestedCoverArt.postValue(null)
+            } finally {
+                connection?.disconnect()
+            }
+        }
+    }
+
     fun applyMetadataToCurrentOrder() {
         val currentSongs = _songs.value?.toMutableList() ?: return
         val metadata = _mbTracks.value ?: return
-        
+
         currentSongs.forEachIndexed { index, item ->
             if (index < metadata.size) {
                 val mbTrack = metadata[index]
