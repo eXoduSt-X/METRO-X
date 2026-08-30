@@ -122,6 +122,16 @@ class BatchTagEditorActivity : AppCompatActivity() {
         viewModel.status.observe(this, Observer { status ->
             Toast.makeText(this, status, Toast.LENGTH_SHORT).show()
         })
+
+        // Muestra/oculta la miniatura de carátula sugerida
+        viewModel.suggestedCoverArt.observe(this, Observer { bitmap ->
+            if (bitmap != null) {
+                binding.ivSuggestedCover.setImageBitmap(bitmap)
+                binding.ivSuggestedCover.visibility = View.VISIBLE
+            } else {
+                binding.ivSuggestedCover.visibility = View.GONE
+            }
+        })
     }
 
     private fun setupListeners() {
@@ -161,16 +171,33 @@ class BatchTagEditorActivity : AppCompatActivity() {
         binding.btnNumberTracks.setOnClickListener {
             viewModel.numberTracksSequentially()
         }
-        
+
         binding.btnFetchInternet.setOnClickListener {
             val album = binding.etAlbumSearch.text.toString()
             val artist = binding.etArtistSearch.text.toString()
-            
+
             if (album.isNotBlank()) {
                 viewModel.fetchFromMusicBrainz(album, artist)
             } else {
                 Toast.makeText(this, "Enter album name at least", Toast.LENGTH_SHORT).show()
             }
+        }
+
+        // Agrega un hueco vacío para saltar una pista faltante
+        binding.btnAddPlaceholder.setOnClickListener {
+            viewModel.addPlaceholder()
+        }
+
+        // Aplica la carátula sugerida (sobrescribe la actual al guardar)
+        binding.ivSuggestedCover.setOnClickListener {
+            val bmp = viewModel.suggestedCoverArt.value ?: return@setOnClickListener
+            selectedArtBitmap = bmp
+            binding.ivAlbumArt.setImageBitmap(bmp)
+            Toast.makeText(
+                this,
+                "Suggested cover applied — will overwrite on Save",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -178,7 +205,7 @@ class BatchTagEditorActivity : AppCompatActivity() {
         val patternAdapter = ArrayAdapter(this, code.name.monkey.retromusic.R.layout.spinner_item_white, patterns)
         patternAdapter.setDropDownViewResource(code.name.monkey.retromusic.R.layout.spinner_item_white)
         binding.spinnerPatterns.adapter = patternAdapter
-        
+
         binding.spinnerPatterns.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val isCustom = patterns[position] == "Custom..."
@@ -195,17 +222,17 @@ class BatchTagEditorActivity : AppCompatActivity() {
         val folderName = uri.path?.split("/")?.last() ?: ""
         binding.tvCurrentFolder.text = uri.path
         binding.etAlbumSearch.setText(folderName)
-        
+
         lifecycleScope.launch(Dispatchers.IO) {
             val tree = DocumentFile.fromTreeUri(this@BatchTagEditorActivity, uri)
-            val files = tree?.listFiles()?.filter { 
+            val files = tree?.listFiles()?.filter {
                 it.isFile && (it.name?.endsWith(".mp3", true) == true || it.name?.endsWith(".m4a", true) == true)
             }?.sortedBy { it.name }
-            
+
             withContext(Dispatchers.Main) {
                 val items = files?.map { doc ->
                     val duration = getDuration(doc.uri)
-                    BatchSongItem(doc, durationText = duration) 
+                    BatchSongItem(document = doc, durationText = duration)
                 } ?: emptyList()
                 viewModel.setSongs(items)
             }
@@ -253,6 +280,9 @@ class BatchTagEditorActivity : AppCompatActivity() {
             }
 
             songs.forEach { item ->
+                // Los placeholders no tienen archivo real, se ignoran al guardar
+                if (item.isPlaceholder || item.document == null) return@forEach
+
                 val tags = item.pendingTags
                 // Solo procedemos si hay etiquetas pendientes O si hay una nueva portada
                 if (tags != null || artworkFile != null) {
@@ -277,11 +307,12 @@ class BatchTagEditorActivity : AppCompatActivity() {
     }
 
     private fun saveItemTags(item: BatchSongItem, tags: TagFields?, artFile: File?): Boolean {
+        val document = item.document ?: return false
         try {
-            val uri = item.document.uri
+            val uri = document.uri
             // Creamos un archivo temporal para que jaudiotagger pueda trabajar
             val tempFile = File.createTempFile("edit", ".tmp", cacheDir)
-            
+
             contentResolver.openInputStream(uri)?.use { input ->
                 tempFile.outputStream().use { output ->
                     input.copyTo(output)
@@ -344,12 +375,15 @@ class BatchTagEditorActivity : AppCompatActivity() {
             val songs = viewModel.songs.value ?: return@launch
             var successCount = 0
             songs.forEach { item ->
+                // No se puede renombrar un archivo que no existe
+                if (item.isPlaceholder || item.document == null) return@forEach
+
                 val tags = item.pendingTags
                 if (tags != null) {
                     val currentName = item.document.name ?: return@forEach
                     val extension = if (currentName.contains(".")) currentName.substring(currentName.lastIndexOf(".")) else ".mp3"
                     val newName = PatternEngine.tagsToFilename(pattern, tags) + extension
-                    
+
                     if (item.document.renameTo(newName)) {
                         successCount++
                     }
