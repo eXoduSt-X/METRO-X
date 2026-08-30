@@ -157,6 +157,10 @@ class BatchTagEditorActivity : AppCompatActivity() {
         binding.btnRenameFiles.setOnClickListener {
             renameFiles()
         }
+
+        binding.btnNumberTracks.setOnClickListener {
+            viewModel.numberTracksSequentially()
+        }
         
         binding.btnFetchInternet.setOnClickListener {
             val album = binding.etAlbumSearch.text.toString()
