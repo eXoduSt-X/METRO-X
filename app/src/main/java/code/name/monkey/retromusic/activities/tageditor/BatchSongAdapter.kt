@@ -7,7 +7,15 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.retromusic.R
+import androidx.documentfile.provider.DocumentFile
 import java.util.Collections
+
+data class BatchSongItem(
+    val document: DocumentFile?,        // ahora nullable para soportar huecos vacíos
+    var pendingTags: TagFields? = null,
+    val durationText: String? = null,
+    val isPlaceholder: Boolean = false  // hueco vacío sin archivo real (botón "+")
+)
 
 class BatchSongAdapter(private var items: MutableList<BatchSongItem>) :
     RecyclerView.Adapter<BatchSongAdapter.ViewHolder>() {
