@@ -1,10 +1,14 @@
 package code.name.monkey.retromusic.activities.tageditor
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Bundle
-import android.os.ParcelFileDescriptor
+import android.os.Environment
+import android.provider.DocumentsContract
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -13,23 +17,24 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.Observer
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.databinding.ActivityBatchTagEditorBinding
-import org.koin.androidx.viewmodel.ext.android.viewModel
-import androidx.lifecycle.lifecycleScope
-import code.name.monkey.retromusic.util.FileUtil
+//import code.name.monkey.retromusic.util.FileUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.images.AndroidArtwork
+import org.koin.androidx.viewmodel.ext.android.viewModel
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
-
+import java.util.Locale
+import android.provider.MediaStore
 class BatchTagEditorActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityBatchTagEditorBinding
@@ -37,11 +42,37 @@ class BatchTagEditorActivity : AppCompatActivity() {
     private lateinit var adapter: BatchSongAdapter
     private lateinit var metadataAdapter: MetadataReferenceAdapter
     private var selectedArtBitmap: Bitmap? = null
+    private var lastSaveError: String? = null
 
     private val artPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             contentResolver.openInputStream(it)?.use { stream ->
-                selectedArtBitmap = BitmapFactory.decodeStream(stream)
+                val bytes = stream.readBytes()
+
+                // 1) Solo medir dimensiones, sin cargar el bitmap completo
+                val boundsOptions = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
+
+                // 2) Calcular el factor de reducción real
+                var calculatedSampleSize = 1
+                val maxDimension = 800
+                if (boundsOptions.outHeight > maxDimension || boundsOptions.outWidth > maxDimension) {
+                    val halfHeight = boundsOptions.outHeight / 2
+                    val halfWidth = boundsOptions.outWidth / 2
+                    while (halfHeight / calculatedSampleSize >= maxDimension &&
+                        halfWidth / calculatedSampleSize >= maxDimension
+                    ) {
+                        calculatedSampleSize *= 2
+                    }
+                }
+
+                // 3) Decodificar ya reducido
+                val finalOptions = BitmapFactory.Options().apply {
+                    inSampleSize = calculatedSampleSize
+                }
+                selectedArtBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, finalOptions)
                 binding.ivAlbumArt.setImageBitmap(selectedArtBitmap)
             }
         }
@@ -102,7 +133,6 @@ class BatchTagEditorActivity : AppCompatActivity() {
 
             override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
                 super.clearView(recyclerView, viewHolder)
-                // Actualizar el ViewModel solo al soltar el elemento
                 viewModel.setSongs(adapter.getItems())
                 viewModel.applyMetadataToCurrentOrder()
             }
@@ -123,7 +153,6 @@ class BatchTagEditorActivity : AppCompatActivity() {
             Toast.makeText(this, status, Toast.LENGTH_SHORT).show()
         })
 
-        // Muestra/oculta la miniatura de carátula sugerida
         viewModel.suggestedCoverArt.observe(this, Observer { bitmap ->
             if (bitmap != null) {
                 binding.ivSuggestedCover.setImageBitmap(bitmap)
@@ -183,12 +212,10 @@ class BatchTagEditorActivity : AppCompatActivity() {
             }
         }
 
-        // Agrega un hueco vacío para saltar una pista faltante
         binding.btnAddPlaceholder.setOnClickListener {
             viewModel.addPlaceholder()
         }
 
-        // Aplica la carátula sugerida (sobrescribe la actual al guardar)
         binding.ivSuggestedCover.setOnClickListener {
             val bmp = viewModel.suggestedCoverArt.value ?: return@setOnClickListener
             selectedArtBitmap = bmp
@@ -202,8 +229,8 @@ class BatchTagEditorActivity : AppCompatActivity() {
     }
 
     private fun setupPatternSpinner() {
-        val patternAdapter = ArrayAdapter(this, code.name.monkey.retromusic.R.layout.spinner_item_white, patterns)
-        patternAdapter.setDropDownViewResource(code.name.monkey.retromusic.R.layout.spinner_item_white)
+        val patternAdapter = ArrayAdapter(this, R.layout.spinner_item_white, patterns)
+        patternAdapter.setDropDownViewResource(R.layout.spinner_item_white)
         binding.spinnerPatterns.adapter = patternAdapter
 
         binding.spinnerPatterns.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -219,6 +246,10 @@ class BatchTagEditorActivity : AppCompatActivity() {
     }
 
     private fun loadFolder(uri: Uri) {
+        contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
         val folderName = uri.path?.split("/")?.last() ?: ""
         binding.tvCurrentFolder.text = uri.path
         binding.etAlbumSearch.setText(folderName)
@@ -241,13 +272,13 @@ class BatchTagEditorActivity : AppCompatActivity() {
 
     private fun getDuration(uri: Uri): String {
         return try {
-            val mmr = android.media.MediaMetadataRetriever()
+            val mmr = MediaMetadataRetriever()
             mmr.setDataSource(this, uri)
-            val durationStr = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+            val durationStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             val durationMs = durationStr?.toLong() ?: 0
             val minutes = (durationMs / 1000) / 60
             val seconds = (durationMs / 1000) % 60
-            String.format(java.util.Locale.getDefault(), "%02d:%02d", minutes, seconds)
+            String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
         } catch (_: Exception) {
             "--:--"
         }
@@ -265,42 +296,46 @@ class BatchTagEditorActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             var successCount = 0
             var errorCount = 0
+            lastSaveError = null
 
-            // Preparar artwork si existe
             var artworkFile: File? = null
-            if (selectedArtBitmap != null) {
+            selectedArtBitmap?.let { bmp ->
                 try {
                     artworkFile = File(cacheDir, "temp_batch_art.jpg")
-                    val out = FileOutputStream(artworkFile)
-                    selectedArtBitmap?.compress(Bitmap.CompressFormat.JPEG, 90, out)
-                    out.close()
+                    FileOutputStream(artworkFile).use { out ->
+                        bmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                    }
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    lastSaveError = e.message
                 }
             }
 
+            val savedUris = mutableListOf<Uri>()
             songs.forEach { item ->
-                // Los placeholders no tienen archivo real, se ignoran al guardar
                 if (item.isPlaceholder || item.document == null) return@forEach
 
                 val tags = item.pendingTags
-                // Solo procedemos si hay etiquetas pendientes O si hay una nueva portada
                 if (tags != null || artworkFile != null) {
                     if (saveItemTags(item, tags, artworkFile)) {
                         successCount++
+                        savedUris.add(item.document.uri)
                     } else {
                         errorCount++
                     }
                 }
             }
 
+            if (savedUris.isNotEmpty()) {
+                scanFiles(savedUris)
+            }
+
             withContext(Dispatchers.Main) {
                 if (errorCount == 0) {
                     Toast.makeText(this@BatchTagEditorActivity, "Successfully saved $successCount songs!", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(this@BatchTagEditorActivity, "Saved $successCount, failed $errorCount", Toast.LENGTH_LONG).show()
+                    val reason = lastSaveError?.let { " ($it)" } ?: ""
+                    Toast.makeText(this@BatchTagEditorActivity, "Saved $successCount, failed $errorCount$reason", Toast.LENGTH_LONG).show()
                 }
-                // Limpiar etiquetas pendientes después de guardar con éxito
                 viewModel.clearPendingTags()
             }
         }
@@ -310,8 +345,16 @@ class BatchTagEditorActivity : AppCompatActivity() {
         val document = item.document ?: return false
         try {
             val uri = document.uri
-            // Creamos un archivo temporal para que jaudiotagger pueda trabajar
-            val tempFile = File.createTempFile("edit", ".tmp", cacheDir)
+
+            // jaudiotagger necesita la extensión real (.mp3/.m4a) para
+            // detectar el formato; un temporal".tmp" hace fallar AudioFileIO.read()
+            val originalName = document.name ?: "temp.mp3"
+            val extension = if (originalName.contains(".")) {
+                originalName.substring(originalName.lastIndexOf("."))
+            } else {
+                ".mp3"
+            }
+            val tempFile = File.createTempFile("edit", extension, cacheDir)
 
             contentResolver.openInputStream(uri)?.use { input ->
                 tempFile.outputStream().use { output ->
@@ -322,7 +365,6 @@ class BatchTagEditorActivity : AppCompatActivity() {
             val audioFile = AudioFileIO.read(tempFile)
             val tag = audioFile.tagOrCreateAndSetDefault
 
-            // Aplicar etiquetas si existen
             tags?.let {
                 if (!it.title.isNullOrBlank()) tag.setField(FieldKey.TITLE, it.title)
                 if (!it.artist.isNullOrBlank()) tag.setField(FieldKey.ARTIST, it.artist)
@@ -332,30 +374,86 @@ class BatchTagEditorActivity : AppCompatActivity() {
                 if (!it.genre.isNullOrBlank()) tag.setField(FieldKey.GENRE, it.genre)
             }
 
-            // Aplicar Portada si existe
             artFile?.let {
-                val artwork = AndroidArtwork.createArtworkFromFile(it)
-                tag.deleteArtworkField()
-                tag.setField(artwork)
+                try {
+                    val artwork = AndroidArtwork.createArtworkFromFile(it)
+                    // 3 = "Cover (front)" según el estándar ID3v2 APIC (frame de imagen adjunta)
+                    artwork.pictureType = 3
+                    tag.deleteArtworkField()
+                    tag.setField(artwork)
+                } catch (e: Exception) {
+                    lastSaveError = e.message
+                }
             }
 
             audioFile.commit()
 
-            // Escribir de vuelta al archivo original vía SAF
-            val pfd: ParcelFileDescriptor? = contentResolver.openFileDescriptor(uri, "rw")
-            pfd?.use {
-                val fos = FileOutputStream(it.fileDescriptor)
-                val fis = FileInputStream(tempFile)
-                fos.write(FileUtil.readBytes(fis))
-                fos.close()
-                fis.close()
+            contentResolver.openOutputStream(uri, "rwt")?.use { output ->
+                tempFile.inputStream().use { input ->
+                    input.copyTo(output)
+                }
+                output.flush()
             }
 
             tempFile.delete()
             return true
         } catch (e: Exception) {
-            e.printStackTrace()
+            lastSaveError = e.message ?: e.javaClass.simpleName
             return false
+        }
+    }
+
+    private fun scanFiles(uris: List<Uri>) {
+        val realPaths = uris.mapNotNull { getRealPathFromDocumentUri(it) }
+
+        // Forzamos el mtime del archivo real en disco: en algunos dispositivos,
+        // una escritura vía SAF con ParcelFileDescriptor no siempre lo actualiza
+        // de forma confiable a través de la capa FUSE. Sin un mtime nuevo,
+        // MediaStore (cualquier app que lea de ahí) sigue
+        // sirviendo la miniatura cacheada vieja.
+        realPaths.forEach { path ->
+            try {
+                File(path).setLastModified(System.currentTimeMillis())
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        if (realPaths.isNotEmpty()) {
+            MediaScannerConnection.scanFile(
+                this,
+                realPaths.toTypedArray(),
+                arrayOf("audio/mpeg")
+            ) { _, _ ->
+                contentResolver.notifyChange(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, null)
+            }
+        }
+
+        uris.forEach { uri ->
+            try {
+                contentResolver.notifyChange(uri, null)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /**
+     * Convierte un URI SAF (content://.../document/primary:Music/...) a una
+     * ruta de archivo real en disco, cuando el documento vive en el
+     * almacenamiento interno principal. Devuelve null si no se puede resolver
+     * (por ejemplo, si el archivo está en una tarjeta SD externa).
+     */
+    private fun getRealPathFromDocumentUri(uri: Uri): String? {
+        return try {
+            val docId = DocumentsContract.getDocumentId(uri)
+            val split = docId.split(":")
+            if (split.size >= 2 && split[0].equals("primary", ignoreCase = true)) {
+                "${Environment.getExternalStorageDirectory()}/${split[1]}"
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -375,7 +473,6 @@ class BatchTagEditorActivity : AppCompatActivity() {
             val songs = viewModel.songs.value ?: return@launch
             var successCount = 0
             songs.forEach { item ->
-                // No se puede renombrar un archivo que no existe
                 if (item.isPlaceholder || item.document == null) return@forEach
 
                 val tags = item.pendingTags
@@ -391,8 +488,7 @@ class BatchTagEditorActivity : AppCompatActivity() {
             }
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@BatchTagEditorActivity, "Renamed $successCount files!", Toast.LENGTH_SHORT).show()
-                // Recargar para ver los nuevos nombres
-                adapter.notifyDataSetChanged()
+                adapter.updateItems(viewModel.songs.value ?: emptyList())
             }
         }
     }

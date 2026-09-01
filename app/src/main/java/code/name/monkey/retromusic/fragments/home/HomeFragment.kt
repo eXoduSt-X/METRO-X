@@ -67,6 +67,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import java.util.*
+import code.name.monkey.retromusic.fragments.ReloadType
 
 data class Subtitle(val startTime: Long, val endTime: Long, val original: String, val translation: String?)
 
@@ -86,12 +87,10 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     private var selectedSubtitleUri: Uri? = null
 
     private var selectedAssSubtitleUri: Uri? = null
-
-    private var pendingAssHardcodeBurn = false
+    private var isProcessing = false
     private var selectedAudioUri: Uri? = null
     private var selectedAudioUris = mutableListOf<Uri>()
 
-    private var pendingHardcodeBurn = false
     private var workshopSubtitleIndex = -1
 
     private var isFullscreen = false
@@ -217,20 +216,25 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         override fun run() {
             exoPlayer?.let { player ->
                 val currentPos = player.currentPosition.toInt()
-                // ... (lógica de subtítulos mantenida)
-                val currentSub = subtitleList.find { currentPos.toLong() in it.startTime..it.endTime }
 
-                if (currentSub != null) {
-                    _binding?.homeContent?.tvSubtitleOverlay?.let { tv ->
-                        val subText = if (currentSub.translation != null) "${currentSub.original}\n${currentSub.translation}" else currentSub.original
-                        if (tv.text != subText) tv.text = subText
-                        tv.visibility = View.VISIBLE
-                    }
-                } else {
-                    _binding?.homeContent?.tvSubtitleOverlay?.let { tv ->
-                        val currentText = tv.text.toString()
-                        if (!currentText.contains("%") && !currentText.contains(getString(R.string.procesando_archivo))) {
-                            if (currentText.isNotEmpty()) tv.text = ""
+                if (!isProcessing) {
+                    // ... (lógica de subtítulos mantenida)
+                    val currentSub = subtitleList.find { currentPos.toLong() in it.startTime..it.endTime }
+
+                    if (currentSub != null) {
+                        _binding?.homeContent?.tvSubtitleOverlay?.let { tv ->
+                            val subText = if (currentSub.translation != null) "${currentSub.original}\n${currentSub.translation}" else currentSub.original
+                            if (tv.text != subText) tv.text = subText
+                            tv.visibility = View.VISIBLE
+                        }
+                    } else {
+                        _binding?.homeContent?.tvSubtitleOverlay?.let { tv ->
+                            val currentText = tv.text.toString()
+                            if (!currentText.contains("%") &&
+                                !currentText.contains(getString(R.string.procesando_archivo)) &&
+                                !currentText.contains("Convirtiendo")) {
+                                if (currentText.isNotEmpty()) tv.text = ""
+                            }
                         }
                     }
                 }
@@ -255,7 +259,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             handler.postDelayed(this, 50) // Alta frecuencia (20fps) para fluidez total
         }
     }
-
     private val folderPickerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             result.data?.data?.let { uri ->
@@ -266,40 +269,37 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             }
         }
     }
-    private val assSubtitlePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            selectedAssSubtitleUri = it
-            if (pendingAssHardcodeBurn) {
-                pendingAssHardcodeBurn = false
-                hardcodearSubtitulosAss()
-            } else {
-                Toast.makeText(requireContext(), "Subtítulo SRT/ASS cargado", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
+
     private val subtitlePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
-            selectedSubtitleUri = it
+            selectedSubtitleUri = null
+            selectedAssSubtitleUri = null
             try {
-                requireContext().contentResolver.openInputStream(it)?.use { stream -> parseSrt(stream) }
-                Toast.makeText(requireContext(), R.string.subtitulos_cargados, Toast.LENGTH_SHORT).show()
-
-                workshopSubtitleIndex = 0
-                // Cargar subtítulos en el editor estilo lírica si el panel está visible o se abre
-                if (subtitleList.isNotEmpty()) {
-                    val lrcStyleText = StringBuilder()
-                    subtitleList.forEach { sub ->
-                        lrcStyleText.append("${formatTimeLrc(sub.startTime.toInt())} ${sub.original}\n")
+                when (getFileExtension(it)) {
+                    "ass", "ssa" -> {
+                        selectedAssSubtitleUri = it
+                        requireContext().contentResolver.openInputStream(it)?.use { stream -> parseAss(stream) }
                     }
-                    binding.homeContent.etSubtitleWorkshop.setText(lrcStyleText.toString())
+                    "lrc" -> {
+                        requireContext().contentResolver.openInputStream(it)?.use { stream -> parseLrc(stream) }
+                    }
+                    else -> { // srt por defecto
+                        selectedSubtitleUri = it
+                        requireContext().contentResolver.openInputStream(it)?.use { stream -> parseSrt(stream) }
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e("parseSubtitles", "Error al leer el archivo: ${e.message}")
+            }
 
-                if (pendingHardcodeBurn) {
-                    pendingHardcodeBurn = false
-                    mostrarConfirmacionIncrustarSubtitulos()
-                }
-            } catch (exception: Exception) {
-                Toast.makeText(requireContext(), R.string.error_al_leer_subtitulos, Toast.LENGTH_SHORT).show()
+            if (subtitleList.isNotEmpty()) {
+                Toast.makeText(requireContext(), R.string.subtitulos_cargados, Toast.LENGTH_SHORT).show()
+                workshopSubtitleIndex = 0
+                val lrcStyleText = StringBuilder()
+                subtitleList.forEach { sub -> lrcStyleText.append("${formatTimeLrc(sub.startTime.toInt())} ${sub.original}\n") }
+                binding.homeContent.etSubtitleWorkshop.setText(lrcStyleText.toString())
+            } else {
+                Toast.makeText(requireContext(), "No se reconocieron subtítulos en el archivo", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -325,14 +325,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
     }
 
-    private fun mostrarConfirmacionIncrustarSubtitulos() {
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.incrustar_subtitulos_title)
-            .setMessage(R.string.incrustar_subtitulos_message)
-            .setPositiveButton(R.string.done) { _, _ -> hardcodearSubtitulos() }
-            .setNegativeButton(R.string.action_cancel, null)
-            .show()
-    }
+
     private fun refrescarListaVideos() {
         val folderUri = selectedFolderUri ?: loadSavedFolderUri()
         if (folderUri != null) {
@@ -537,7 +530,60 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             624
         }
     }
+    private fun parseAss(inputStream: java.io.InputStream) {
+        subtitleList.clear()
+        val cues = LinkedHashMap<Pair<Long, Long>, Subtitle>()
 
+        inputStream.bufferedReader().forEachLine { raw ->
+            val line = raw.trim()
+            if (!line.startsWith("Dialogue:")) return@forEachLine
+
+            // Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+            val parts = line.removePrefix("Dialogue:").trim().split(",", limit = 10)
+            if (parts.size < 10) return@forEachLine
+
+            val start = parseAssTimeToMillis(parts[1].trim())
+            val end = parseAssTimeToMillis(parts[2].trim())
+            val style = parts[3].trim()
+            if (style == "Watermark") return@forEachLine
+
+            val text = cleanAssText(parts[9])
+            val key = start to end
+            val existing = cues[key]
+
+            cues[key] = if (style == "Translation") {
+                existing?.copy(translation = text) ?: Subtitle(start, end, "", text)
+            } else {
+                existing?.copy(original = text) ?: Subtitle(start, end, text, existing?.translation)
+            }
+        }
+
+        subtitleList.addAll(cues.values.sortedBy { it.startTime })
+        Log.d("parseAss", "Subtítulos ASS cargados: ${subtitleList.size}")
+    }
+
+    private fun parseAssTimeToMillis(time: String): Long {
+        return try {
+            // Formato H:MM:SS.cc (centésimas)
+            val parts = time.split(":")
+            val h = parts[0].trim().toLong()
+            val m = parts[1].trim().toLong()
+            val secParts = parts[2].trim().split(".")
+            val s = secParts[0].toLong()
+            val centis = if (secParts.size > 1) secParts[1].toLong() else 0L
+            (h * 3_600_000) + (m * 60_000) + (s * 1_000) + (centis * 10)
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
+    private fun cleanAssText(raw: String): String {
+        return raw
+            .replace(Regex("\\{[^}]*\\}"), "") // quita override tags {\...}
+            .replace("\\N", " ")
+            .replace("\\n", " ")
+            .trim()
+    }
     private fun parseSrt(inputStream: java.io.InputStream) {
         subtitleList.clear()
         val lines = inputStream.bufferedReader().readLines()
@@ -710,7 +756,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         setFixedIcon(binding.homeContent.btnCreateGif, R.drawable.ic_gif)
         setFixedIcon(binding.homeContent.btnYoutubeDownload, R.drawable.ic_youtube, 130, 29)
         setFixedIcon(binding.homeContent.btnTagEditor, R.drawable.ic_dashboard)
-        setFixedIcon(binding.homeContent.btnApplyFade, R.drawable.ic_unir)
+        setFixedIcon(binding.homeContent.btnApplyFade, R.drawable.ic_fade)
         setPlayPauseIcon(false)
 
         fullscreenGestureDetector = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
@@ -909,27 +955,25 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 Toast.makeText(requireContext(), "Define los tiempos de corte", Toast.LENGTH_SHORT).show()
             }
         }
+
         binding.homeContent.btnHardcodeAssSubtitles.setOnClickListener {
             if (videoPlaylist.isEmpty()) {
                 Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (selectedAssSubtitleUri != null) hardcodearSubtitulosAss() else {
-                pendingAssHardcodeBurn = true
-                assSubtitlePickerLauncher.launch("*/*")
-            }
-        }
-
-        binding.homeContent.btnHardcodeSubtitles.setOnClickListener {
-            if (videoPlaylist.isEmpty()) {
-                Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
+            if (subtitleList.isEmpty()) {
+                Toast.makeText(requireContext(), "Primero cargá subtítulos con SUBS para previsualizarlos", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (selectedSubtitleUri != null) mostrarConfirmacionIncrustarSubtitulos() else {
-                pendingHardcodeBurn = true
-                subtitlePickerLauncher.launch("*/*")
-            }
+            AlertDialog.Builder(requireContext())
+                .setTitle(R.string.incrustar_subtitulos_title)
+                .setMessage(R.string.incrustar_subtitulos_message)
+                .setPositiveButton(R.string.done) { _, _ -> hardcodearSubtitulosAss() }
+                .setNegativeButton(R.string.action_cancel, null)
+                .show()
         }
+
+
         binding.homeContent.btnCreateVideoFromPhotos.setOnClickListener {
             if (slideshowImages.isEmpty()) photosPickerLauncher.launch("image/*") else crearVideoDesdeFotos(slideshowImages)
         }
@@ -1271,9 +1315,53 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             }, { stats -> actualizarProgreso(stats.time, totalDurationMs) })
         }.start()
     }
+    private fun buildAssFromSubtitleList(videoUri: Uri): File {
+        val (playResX, playResY) = getVideoResolution(videoUri)
+        val subtitleFontSize = (playResY * 0.06).toInt().coerceIn(16, 60)
+
+        fun msToAss(ms: Long): String {
+            val totalSeconds = ms / 1000
+            val h = totalSeconds / 3600
+            val m = (totalSeconds % 3600) / 60
+            val s = totalSeconds % 60
+            val centis = (ms % 1000) / 10
+            return String.format(Locale.getDefault(), "%d:%02d:%02d.%02d", h, m, s, centis)
+        }
+
+        val ass = StringBuilder()
+        ass.append("[Script Info]\n")
+        ass.append("Title: Burn Export\n")
+        ass.append("ScriptType: v4.00+\n")
+        ass.append("PlayResX: $playResX\n")
+        ass.append("PlayResY: $playResY\n")
+        ass.append("WrapStyle: 0\n")
+        ass.append("ScaledBorderAndShadow: yes\n\n")
+        ass.append("[V4+ Styles]\n")
+        ass.append("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
+        ass.append("Style: Original,Roboto,$subtitleFontSize,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,20,20,25,1\n")
+        ass.append("Style: Translation,Roboto,$subtitleFontSize,&H0000FFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,8,20,20,15,1\n")
+        ass.append("\n[Events]\n")
+        ass.append("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+
+        subtitleList.forEach { sub ->
+            val start = msToAss(sub.startTime)
+            val end = msToAss(sub.endTime)
+            if (sub.original.isNotBlank()) {
+                ass.append("Dialogue: 0,$start,$end,Original,,0,0,0,,${sub.original}\n")
+            }
+            if (!sub.translation.isNullOrBlank()) {
+                ass.append("Dialogue: 0,$start,$end,Translation,,0,0,0,,${sub.translation}\n")
+            }
+        }
+
+        val tempFile = File(requireContext().cacheDir, "burn_${System.currentTimeMillis()}.ass")
+        tempFile.writeText(ass.toString())
+        return tempFile
+    }
 
     private fun clearSubtitles() {
         selectedSubtitleUri = null
+        selectedAssSubtitleUri = null
         subtitleList.clear()
         _binding?.homeContent?.tvSubtitleOverlay?.text = ""
     }
@@ -1548,27 +1636,36 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     }
 
     private fun mostrarProgreso(totalDurationMs: Long = 0) {
-        requireActivity().runOnUiThread {
-            _binding?.homeContent?.progressBar?.let { pb -> pb.progress = 0; pb.isIndeterminate = totalDurationMs <= 0; pb.visibility = View.VISIBLE }
-            _binding?.homeContent?.tvSubtitleOverlay?.let { tv -> tv.text = getString(R.string.procesando_archivo); tv.visibility = View.VISIBLE }
-        }
+        isProcessing = true
+        _binding?.homeContent?.progressBar?.let { pb -> pb.progress = 0; pb.isIndeterminate = totalDurationMs == 0L; pb.visibility = View.VISIBLE }
+        _binding?.homeContent?.tvSubtitleOverlay?.let { tv -> tv.text = getString(R.string.procesando_archivo); tv.visibility = View.VISIBLE }
     }
 
     private fun actualizarProgreso(currentTimeMs: Double, totalDurationMs: Long) {
         if (totalDurationMs <= 0) return
         val progress = ((currentTimeMs / totalDurationMs) * 100).toInt().coerceIn(0, 100)
         requireActivity().runOnUiThread {
-            _binding?.homeContent?.progressBar?.let { pb -> pb.isIndeterminate = false; pb.progress = progress }
-            _binding?.homeContent?.tvSubtitleOverlay?.text = "${getString(R.string.procesando_archivo)} ($progress%)"
+            _binding?.homeContent?.progressBar?.let { pb -> 
+                pb.isIndeterminate = false
+                pb.progress = progress 
+            }
+            val currentText = _binding?.homeContent?.tvSubtitleOverlay?.text?.toString() ?: ""
+            if (currentText.contains("Convirtiendo")) {
+                // Preservar el prefijo de "Convirtiendo (X/Y)"
+                val prefix = currentText.substringBefore(":")
+                val name = currentText.substringAfter(":").substringBeforeLast("(").trim()
+                _binding?.homeContent?.tvSubtitleOverlay?.text = "$prefix: $name ($progress%)"
+            } else {
+                _binding?.homeContent?.tvSubtitleOverlay?.text = "${getString(R.string.procesando_archivo)} ($progress%)"
+            }
         }
     }
 
     private fun ocultarProgreso() {
-        requireActivity().runOnUiThread {
-            _binding?.homeContent?.progressBar?.visibility = View.GONE
-            _binding?.homeContent?.tvSubtitleOverlay?.text = ""
-            _binding?.homeContent?.tvSubtitleOverlay?.visibility = View.GONE
-        }
+        isProcessing = false
+        _binding?.homeContent?.progressBar?.visibility = View.GONE
+        _binding?.homeContent?.tvSubtitleOverlay?.text = ""
+        _binding?.homeContent?.tvSubtitleOverlay?.visibility = View.GONE
     }
 
     private fun getMediaDuration(uri: Uri): Long {
@@ -1704,7 +1801,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     override fun onMenuItemSelected(item: MenuItem): Boolean = when (item.itemId) { R.id.action_settings -> { findNavController().navigate(R.id.settings_fragment, null, navOptions); true }; R.id.action_import_playlist -> { ImportPlaylistDialog().show(childFragmentManager, "ImportPlaylist"); true }; R.id.action_add_to_playlist -> { CreatePlaylistDialog.create(emptyList()).show(childFragmentManager, "ShowCreatePlaylistDialog"); true }; else -> false }
     override fun onPrepareMenu(menu: Menu) { super.onPrepareMenu(menu); ToolbarContentTintHelper.handleOnPrepareOptionsMenu(requireActivity(), binding.appBarLayout.toolbar) }
     override fun onPause() { super.onPause(); exoPlayer?.let { savedPosition = it.currentPosition.toInt() } }
-    override fun onResume() { super.onResume(); checkForMargins(); exitTransition = null; refrescarListaVideos(); if (_binding != null && videoPlaylist.isNotEmpty() && savedPosition > 0) { exoPlayer?.apply { seekTo(savedPosition.toLong()); if (wasPlayingBeforePause) { play(); setPlayPauseIcon(true) } } } }
+    override fun onResume() { super.onResume(); checkForMargins(); exitTransition = null; refrescarListaVideos(); libraryViewModel.forceReload(ReloadType.Songs); libraryViewModel.forceReload(ReloadType.Albums); if (_binding != null && videoPlaylist.isNotEmpty() && savedPosition > 0) { exoPlayer?.apply { seekTo(savedPosition.toLong()); if (wasPlayingBeforePause) { play(); setPlayPauseIcon(true) } } } }
 
     override fun onDestroyView() {
         if (isFullscreen) { requireActivity().requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED; WindowCompat.getInsetsController(requireActivity().window, requireActivity().window.decorView).show(WindowInsetsCompat.Type.systemBars()); mainActivity.setBottomNavVisibility(visible = true, hideBottomSheet = false) }
@@ -1726,9 +1823,30 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             }, { stats -> actualizarProgreso(stats.time, duration) })
         }
     }
+    private fun getFileExtension(uri: Uri): String {
+        val name = requireContext().contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { if (it.moveToFirst()) it.getString(0) else null }
+        return name?.substringAfterLast('.', "")?.lowercase().orEmpty()
+    }
+    private fun parseLrc(inputStream: java.io.InputStream) {
+        subtitleList.clear()
+        val stampRegex = "\\[(\\d{2}):(\\d{2})\\.(\\d{2})\\]".toRegex()
+        val lines = inputStream.bufferedReader().readLines().filter { stampRegex.containsMatchIn(it) }
+
+        for (i in lines.indices) {
+            val match = stampRegex.find(lines[i]) ?: continue
+            val startMs = lrcTimeToMs(match.value).toLong()
+            val endMs = if (i < lines.size - 1) {
+                val nextMatch = stampRegex.find(lines[i + 1])
+                if (nextMatch != null) lrcTimeToMs(nextMatch.value).toLong() else startMs + 2000
+            } else startMs + 2000
+            val text = lines[i].replace(stampRegex, "").trim()
+            if (text.isNotEmpty()) subtitleList.add(Subtitle(startMs, endMs, text, null))
+        }
+        Log.d("parseLrc", "Subtítulos LRC cargados: ${subtitleList.size}")
+    }
     private fun hardcodearSubtitulosAss() {
-        val subUri = selectedAssSubtitleUri
-        if (videoPlaylist.isEmpty() || subUri == null) {
+        if (videoPlaylist.isEmpty() || subtitleList.isEmpty()) {
             Toast.makeText(requireContext(), R.string.selecciona_video_y_srt, Toast.LENGTH_SHORT).show()
             return
         }
@@ -1742,22 +1860,16 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
             val fileName = "${originalName.substringBeforeLast(".")}_ass.mp4"
 
-            val ext = requireContext().contentResolver.getType(subUri)?.let {
-                if (it.contains("ass")) "ass" else "srt"
-            } ?: "srt"
-
             val videoFile = cacheUriToFile(videoUri, "input_ass.mp4")
-            val subFile = cacheUriToFile(subUri, "input_sub_ass.$ext")
+            val subFile = buildAssFromSubtitleList(videoUri)
             val outputFile = File(requireContext().cacheDir, "output_ass.mp4")
             if (outputFile.exists()) outputFile.delete()
 
-            // fontsdir apunta a la misma carpeta que ya usas para drawtext (getFontDir()),
-            // así libass encuentra las fuentes sin necesitar FFmpegKitConfig.
             val vFilter = "subtitles=${subFile.absolutePath}:fontsdir=${getFontDir().absolutePath}"
-            val command = "-y -i \"${videoFile.absolutePath}\" -vf \"$vFilter\" -c:v h264_mediacodec -b:v 2M -c:a copy \"${outputFile.absolutePath}\""
+            val command = "-y -i ${videoFile.absolutePath} -vf $vFilter -c:v h264_mediacodec -b:v 2M -c:a copy ${outputFile.absolutePath}"
 
             FFmpegKit.executeAsync(command, { session ->
-                Log.d("FFmpegAssSubs", session.allLogsAsString) // log siempre, no solo en el else
+                Log.d("FFmpegAssSubs", session.allLogsAsString)
                 if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
                     saveToDownloads(outputFile, fileName)
                 } else {
@@ -1767,22 +1879,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 videoFile.delete()
                 subFile.delete()
                 if (outputFile.exists()) outputFile.delete()
-            }, { stats -> actualizarProgreso(stats.time, duration) })
-        }.start()
-    }
-    private fun hardcodearSubtitulos() {
-        val subUri = selectedSubtitleUri; if (videoPlaylist.isEmpty() || subUri == null) { Toast.makeText(requireContext(), R.string.selecciona_video_y_srt, Toast.LENGTH_SHORT).show(); return }
-        Toast.makeText(requireContext(), R.string.incrustando_subtitulos_msg, Toast.LENGTH_LONG).show(); requireActivity().runOnUiThread { mostrarProgreso() }
-        val videoUri = videoPlaylist[currentIndex]; val duration = getMediaDuration(videoUri); mostrarProgreso(duration)
-        Thread {
-            val originalName = requireContext().contentResolver.query(videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
-            val fileName = "${originalName.substringBeforeLast(".")}_sub.mp4"; val videoFile = cacheUriToFile(videoUri, "input_hardcode.mp4"); val outputFile = File(requireContext().cacheDir, "output_hardcode.mp4"); if (outputFile.exists()) outputFile.delete()
-            val fontFileRegular = File(getFontDir(), "roboto_regular.ttf").absolutePath; val fontFileItalic = File(getItalicFontDir(), "roboto_italic.ttf").absolutePath; val fontSize = (getVideoWidth(videoFile) / 22).coerceIn(12, 36); val drawtextFilter = buildDrawtextFilters(subtitleList, fontFileRegular, fontFileItalic, fontSize)
-            if (drawtextFilter.isBlank()) { requireActivity().runOnUiThread { Toast.makeText(requireContext(), R.string.no_hay_subtitulos_msg, Toast.LENGTH_SHORT).show() }; ocultarProgreso(); videoFile.delete(); return@Thread }
-            val command = "-y -i \"${videoFile.absolutePath}\" -vf \"$drawtextFilter,format=yuv420p\" -c:v h264_mediacodec -b:v 2M -c:a copy \"${outputFile.absolutePath}\""
-            FFmpegKit.executeAsync(command, { session ->
-                if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) saveToDownloads(outputFile, fileName)
-                requireActivity().runOnUiThread { clearSubtitles() }; ocultarProgreso(); videoFile.delete(); if (outputFile.exists()) outputFile.delete()
             }, { stats -> actualizarProgreso(stats.time, duration) })
         }.start()
     }
@@ -1830,23 +1926,85 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         val uri = requireContext().contentResolver.insert(collectionUri, contentValues)
         if (uri != null) try { requireContext().contentResolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }; requireActivity().runOnUiThread { Toast.makeText(requireContext(), getString(R.string.guardado_en_downloads), Toast.LENGTH_SHORT).show() } } catch (e: Exception) { requireActivity().runOnUiThread { Toast.makeText(requireContext(), "Error al guardar $fileName", Toast.LENGTH_SHORT).show() } }
     }
+    private fun detectarCodecPortada(inputFile: File): String? {
+        // FFprobeKit no está disponible en este build (ClassNotFoundException:
+        // com.arthenica.ffmpegkit.FFprobeKit) — probablemente el APK no incluye
+        // ese módulo por separado, o quedó desincronizado por un build
+        // incremental. En vez de depender de él, usamos FFmpegKit puro: al
+        // pedirle solo "-i archivo" sin indicar salida, ffmpeg igual imprime la
+        // info completa de todos los streams (incluido el de video/portada
+        // embebida) en su log, justo antes de fallar por "At least one output
+        // file must be specified". Ese log es lo único que necesitamos.
+        val session = com.arthenica.ffmpegkit.FFmpegKit.execute(
+            "-i \"${inputFile.absolutePath}\""
+        )
+        val log = session.allLogsAsString ?: return null
+
+        // Busca una línea tipo: "Stream #0:1: Video: mjpeg, ..." o "Video: png, ..."
+        val regex = Regex("""Stream #\d+:\d+.*?: Video: (\w+)""")
+        val match = regex.find(log) ?: return null
+        return match.groupValues[1].trim()
+    }
 
     private fun convertirAudiosAMp3(uris: List<Uri>, calidad: Int = 2) {
         Toast.makeText(requireContext(), "Iniciando conversión masiva...", Toast.LENGTH_LONG).show(); val totalUris = uris.size
         Thread {
             var exitosos = 0; var fallidos = 0
+            var primerError: String? = null
             uris.forEachIndexed { index, uri ->
                 val originalName = requireContext().contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Audio_${System.currentTimeMillis()}_$index"
                 val fileName = "${originalName.substringBeforeLast(".")}.mp3"; val inputFile = cacheUriToFile(uri, "temp_input_audio_$index.tmp")
-                if (!inputFile.exists() || inputFile.length() == 0L) { fallidos++; return@forEachIndexed }
+                if (!inputFile.exists() || inputFile.length() == 0L) {
+                    fallidos++
+                    if (primerError == null) primerError = "$originalName: no se pudo leer el archivo de origen (0 bytes o no existe)"
+                    return@forEachIndexed
+                }
                 val outputFile = File(requireContext().cacheDir, "output_temp_$index.mp3"); if (outputFile.exists()) outputFile.delete()
                 val duration = getMediaDuration(uri); requireActivity().runOnUiThread { mostrarProgreso(duration); _binding?.homeContent?.tvSubtitleOverlay?.text = "Convirtiendo ($index/$totalUris): ${originalName.substringBeforeLast(".")}" }
-                val command = "-y -i \"${inputFile.absolutePath}\" -map_metadata 0 -id3v2_version 3 -c:a libmp3lame -q:a $calidad \"${outputFile.absolutePath}\""
+
+                // Detectamos el códec de la portada embebida (si hay) para decidir si
+                // se puede copiar tal cual o si hay que reencodearla a un formato que
+                // ID3v2/APIC soporte (jpg o png). Esto evita el bug de inflado por PNG
+                // sin comprimir Y el caso de formatos no soportados (webp, etc).
+                val codecPortada = detectarCodecPortada(inputFile)
+                val tieneVideoStream = !codecPortada.isNullOrBlank()
+                val filtroVideo = when {
+                    !tieneVideoStream -> ""
+                    codecPortada == "mjpeg" || codecPortada == "png" -> "-c:v copy"
+                    else -> "-c:v mjpeg" // webp u otro formato no soportado por APIC -> reencode
+                }
+                val mapVideo = if (tieneVideoStream) "-map 0:v?" else ""
+                val dispositionFlag = if (tieneVideoStream) "-disposition:v attached_pic" else ""
+
+                val command = "-y -i \"${inputFile.absolutePath}\" " +
+                        "-map_metadata 0 -map 0:a $mapVideo " +
+                        "-c:a libmp3lame -q:a $calidad $filtroVideo $dispositionFlag " +
+                        "-id3v2_version 3 \"${outputFile.absolutePath}\""
+
                 val session = FFmpegKit.execute(command) { stats -> actualizarProgreso(stats.time, duration) }
-                if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) { saveToDownloads(outputFile, fileName, "audio/mpeg"); exitosos++ } else fallidos++
+                if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
+                    saveToDownloads(outputFile, fileName, "audio/mpeg"); exitosos++
+                } else {
+                    fallidos++
+                    // Antes esto se perdía en silencio. Logueamos el log completo de
+                    // FFmpeg (logcat, tag "ConvertirMp3") y guardamos el primer error
+                    // para mostrarlo en el Toast final -- así "X fallidos" deja de ser
+                    // una caja negra.
+                    val logCompleto = session.allLogsAsString
+                    Log.e("ConvertirMp3", "Falló convirtiendo $originalName (returnCode=${session.returnCode}):\n$logCompleto")
+                    if (primerError == null) {
+                        val ultimaLinea = logCompleto?.trim()?.lines()?.lastOrNull { it.isNotBlank() }
+                        primerError = "$originalName: ${ultimaLinea ?: "returnCode=${session.returnCode}"}"
+                    }
+                }
                 inputFile.delete(); outputFile.delete()
             }
-            requireActivity().runOnUiThread { ocultarProgreso(); Toast.makeText(requireContext(), "Conversión: $exitosos ok, $fallidos fallidos", Toast.LENGTH_LONG).show() }
+            requireActivity().runOnUiThread {
+                ocultarProgreso()
+                val base = "Conversión: $exitosos ok, $fallidos fallidos"
+                val mensaje = if (fallidos > 0 && primerError != null) "$base\nPrimer error: $primerError" else base
+                Toast.makeText(requireContext(), mensaje, Toast.LENGTH_LONG).show()
+            }
         }.start()
     }
 

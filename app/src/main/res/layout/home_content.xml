@@ -38,25 +38,32 @@
 
             <ProgressBar
                 android:id="@+id/progressBar"
-                style="?android:attr/progressBarStyleHorizontal"
+                style="@style/Widget.AppCompat.ProgressBar.Horizontal"
                 android:layout_width="match_parent"
-                android:layout_height="8dp"
-                android:layout_gravity="center"
-                android:layout_marginHorizontal="24dp"
+                android:layout_height="40dp"
+                android:layout_gravity="bottom"
+                android:minHeight="40dp"
+                android:maxHeight="40dp"
                 android:max="100"
                 android:progress="0"
                 android:progressTint="#00BFFF"
+                android:scaleY="10"
                 android:visibility="gone" />
 
             <TextView
                 android:id="@+id/tvSubtitleOverlay"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="40dp"
                 android:layout_gravity="bottom|center_horizontal"
                 android:gravity="center"
-                android:padding="16dp"
+                android:padding="4dp"
                 android:textColor="#FFFFFF"
-                android:textSize="18sp" />
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:shadowColor="#000000"
+                android:shadowDx="2"
+                android:shadowDy="2"
+                android:shadowRadius="2" />
             <TextView
                 android:id="@+id/tvResolutionOverlay"
                 android:layout_width="wrap_content"
