@@ -51,12 +51,7 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
                 item.pendingTags = current.copy(
                     artist = if (!manualTags.artist.isNullOrBlank()) manualTags.artist else current.artist,
                     album = if (!manualTags.album.isNullOrBlank()) manualTags.album else current.album,
-                    year = if (!manualTags.year.isNullOrBlank()) manualTags.year else current.year,
-                    genre = if (!manualTags.genre.isNullOrBlank()) manualTags.genre else current.genre,
-                    albumArtist = if (!manualTags.albumArtist.isNullOrBlank()) manualTags.albumArtist else current.albumArtist,
-                    composer = if (!manualTags.composer.isNullOrBlank()) manualTags.composer else current.composer,
-                    discNumber = if (!manualTags.discNumber.isNullOrBlank()) manualTags.discNumber else current.discNumber,
-                    comment = if (!manualTags.comment.isNullOrBlank()) manualTags.comment else current.comment
+                    year = if (!manualTags.year.isNullOrBlank()) manualTags.year else current.year
                 )
             }
         }

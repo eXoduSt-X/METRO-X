@@ -69,6 +69,18 @@
                     android:textSize="10sp"
                     android:layout_marginStart="4dp"
                     android:padding="0dp" />
+
+                <Button
+                    android:id="@+id/btnExtractArt"
+                    android:layout_width="0dp"
+                    android:layout_height="32dp"
+                    android:layout_weight="1.2"
+                    android:text="EXTRACT"
+                    android:backgroundTint="#333333"
+                    android:textColor="#FFFFFF"
+                    android:textSize="10sp"
+                    android:layout_marginStart="4dp"
+                    android:padding="0dp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -125,13 +137,7 @@
                     android:orientation="horizontal"
                     android:layout_marginTop="4dp">
                     <EditText android:id="@+id/etYearBatch" android:layout_width="0dp" android:layout_weight="0.6" android:layout_height="wrap_content" android:hint="Year" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:inputType="number" />
-                    <EditText android:id="@+id/etGenreBatch" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:hint="Genre" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:layout_marginStart="4dp" />
-                    <EditText android:id="@+id/etDiscBatch" android:layout_width="0dp" android:layout_weight="0.4" android:layout_height="wrap_content" android:hint="Disc" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:layout_marginStart="4dp" android:inputType="number" />
                 </LinearLayout>
-
-                <EditText android:id="@+id/etAlbumArtistBatch" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Album Artist" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:layout_marginTop="4dp" />
-                <EditText android:id="@+id/etComposerBatch" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Composer" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:layout_marginTop="4dp" />
-                <EditText android:id="@+id/etCommentBatch" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Comment" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:layout_marginTop="4dp" />
 
                 <Button
                     android:id="@+id/btnApplyManualTags"

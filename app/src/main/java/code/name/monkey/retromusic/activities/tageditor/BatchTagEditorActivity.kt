@@ -1,11 +1,13 @@
 package code.name.monkey.retromusic.activities.tageditor
 
+import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.DocumentsContract
@@ -195,12 +197,7 @@ class BatchTagEditorActivity : AppCompatActivity() {
             val manualTags = TagFields(
                 artist = binding.etArtistBatch.text.toString().takeIf { it.isNotBlank() },
                 album = binding.etAlbumBatch.text.toString().takeIf { it.isNotBlank() },
-                year = binding.etYearBatch.text.toString().takeIf { it.isNotBlank() },
-                genre = binding.etGenreBatch.text.toString().takeIf { it.isNotBlank() },
-                albumArtist = binding.etAlbumArtistBatch.text.toString().takeIf { it.isNotBlank() },
-                composer = binding.etComposerBatch.text.toString().takeIf { it.isNotBlank() },
-                discNumber = binding.etDiscBatch.text.toString().takeIf { it.isNotBlank() },
-                comment = binding.etCommentBatch.text.toString().takeIf { it.isNotBlank() }
+                year = binding.etYearBatch.text.toString().takeIf { it.isNotBlank() }
             )
             viewModel.batchApplyManualTags(manualTags)
             Toast.makeText(this, "Manual tags applied to selected", Toast.LENGTH_SHORT).show()
@@ -229,6 +226,10 @@ class BatchTagEditorActivity : AppCompatActivity() {
 
         binding.btnSelectArt.setOnClickListener {
             artPickerLauncher.launch("image/*")
+        }
+
+        binding.btnExtractArt.setOnClickListener {
+            extractArt()
         }
 
         binding.btnRenameFiles.setOnClickListener {
@@ -304,6 +305,97 @@ class BatchTagEditorActivity : AppCompatActivity() {
                     BatchSongItem(document = doc, durationText = duration)
                 } ?: emptyList()
                 viewModel.setSongs(items)
+                detectCommonArtwork(items)
+            }
+        }
+    }
+
+    private fun detectCommonArtwork(items: List<BatchSongItem>) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            var commonArtBytes: ByteArray? = null
+            var inconsistent = false
+            var anyArtFound = false
+
+            for (item in items) {
+                if (item.isPlaceholder || item.document == null) continue
+                val bytes = getArtworkBytes(item.document.uri)
+                if (bytes != null) {
+                    if (!anyArtFound) {
+                        commonArtBytes = bytes
+                        anyArtFound = true
+                    } else {
+                        if (!bytes.contentEquals(commonArtBytes)) {
+                            inconsistent = true
+                            break
+                        }
+                    }
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                if (anyArtFound && !inconsistent && commonArtBytes != null) {
+                    selectedArtBitmap = BitmapFactory.decodeByteArray(commonArtBytes, 0, commonArtBytes.size)
+                    binding.ivAlbumArt.setImageBitmap(selectedArtBitmap)
+                } else {
+                    selectedArtBitmap = null
+                    binding.ivAlbumArt.setImageResource(R.drawable.ic_album)
+                }
+            }
+        }
+    }
+
+    private fun getArtworkBytes(uri: Uri): ByteArray? {
+        return try {
+            val originalName = DocumentFile.fromSingleUri(this, uri)?.name ?: "temp.mp3"
+            val extension = if (originalName.contains(".")) {
+                originalName.substring(originalName.lastIndexOf("."))
+            } else {
+                ".mp3"
+            }
+            val tempFile = File.createTempFile("art_check", extension, cacheDir)
+            contentResolver.openInputStream(uri)?.use { input ->
+                tempFile.outputStream().use { output -> input.copyTo(output) }
+            }
+            val audioFile = AudioFileIO.read(tempFile)
+            val bytes = audioFile.tag?.firstArtwork?.binaryData
+            tempFile.delete()
+            bytes
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun extractArt() {
+        val bitmap = selectedArtBitmap
+        if (bitmap == null) {
+            Toast.makeText(this, "No artwork to extract", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val fileName = "Extracted_Cover_${System.currentTimeMillis()}.jpg"
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/RetroMusic")
+                    }
+                }
+
+                val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                uri?.let {
+                    contentResolver.openOutputStream(it)?.use { stream ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
+                    }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@BatchTagEditorActivity, "Artwork saved to Pictures/RetroMusic", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@BatchTagEditorActivity, "Error extracting art: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
