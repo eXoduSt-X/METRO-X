@@ -84,11 +84,17 @@ class BatchTagEditorActivity : AppCompatActivity() {
     }
 
     private val patterns = listOf(
+        "Add Tag...",
+        "%track%",
+        "%title%",
+        "%artist%",
+        "%album%",
+        "%year%",
+        "--- Patterns ---",
         "%track% - %title%",
         "%artist% - %title%",
         "%track% - %artist% - %title%",
-        "%title%",
-        "Custom..."
+        "%title%"
     )
 
     private val folderPickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -161,10 +167,12 @@ class BatchTagEditorActivity : AppCompatActivity() {
             if (tracks.isNotEmpty()) {
                 binding.rvMetadata.visibility = View.VISIBLE
                 binding.tvWebRefLabel.visibility = View.VISIBLE
+                binding.vListDivider.visibility = View.VISIBLE
                 metadataAdapter.updateItems(tracks)
             } else {
                 binding.rvMetadata.visibility = View.GONE
                 binding.tvWebRefLabel.visibility = View.GONE
+                binding.vListDivider.visibility = View.GONE
             }
         })
 
@@ -274,11 +282,20 @@ class BatchTagEditorActivity : AppCompatActivity() {
 
         binding.spinnerPatterns.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val isCustom = patterns[position] == "Custom..."
-                binding.etPattern.visibility = if (isCustom) View.VISIBLE else View.GONE
-                if (!isCustom) {
-                    binding.etPattern.setText(patterns[position])
+                if (position == 0 || patterns[position].startsWith("---")) return
+                
+                val selected = patterns[position]
+                val editable = binding.etPattern.text
+                val cursorPosition = binding.etPattern.selectionStart
+                
+                if (cursorPosition >= 0) {
+                    editable.insert(cursorPosition, selected)
+                } else {
+                    editable.append(selected)
                 }
+                
+                // Reset selector to "Add Tag..."
+                binding.spinnerPatterns.setSelection(0)
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
@@ -305,63 +322,113 @@ class BatchTagEditorActivity : AppCompatActivity() {
                     BatchSongItem(document = doc, durationText = duration)
                 } ?: emptyList()
                 viewModel.setSongs(items)
-                detectCommonArtwork(items)
+                detectCommonMetadata(items)
             }
         }
     }
 
-    private fun detectCommonArtwork(items: List<BatchSongItem>) {
+    private fun detectCommonMetadata(items: List<BatchSongItem>) {
         lifecycleScope.launch(Dispatchers.IO) {
             var commonArtBytes: ByteArray? = null
-            var inconsistent = false
+            var artInconsistent = false
             var anyArtFound = false
+
+            var commonArtist: String? = null
+            var artistInconsistent = false
+            var anyArtistFound = false
+
+            var commonAlbum: String? = null
+            var albumInconsistent = false
+            var anyAlbumFound = false
+
+            var commonYear: String? = null
+            var yearInconsistent = false
+            var anyYearFound = false
 
             for (item in items) {
                 if (item.isPlaceholder || item.document == null) continue
-                val bytes = getArtworkBytes(item.document.uri)
-                if (bytes != null) {
-                    if (!anyArtFound) {
-                        commonArtBytes = bytes
-                        anyArtFound = true
-                    } else {
-                        if (!bytes.contentEquals(commonArtBytes)) {
-                            inconsistent = true
-                            break
+
+                try {
+                    val originalName = DocumentFile.fromSingleUri(this@BatchTagEditorActivity, item.document.uri)?.name ?: "temp.mp3"
+                    val extension = if (originalName.contains(".")) originalName.substring(originalName.lastIndexOf(".")) else ".mp3"
+                    val tempFile = File.createTempFile("meta_check", extension, cacheDir)
+                    contentResolver.openInputStream(item.document.uri)?.use { input ->
+                        tempFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    val audioFile = AudioFileIO.read(tempFile)
+                    val tag = audioFile.tag
+
+                    // Check Art
+                    val bytes = tag?.firstArtwork?.binaryData
+                    if (bytes != null) {
+                        if (!anyArtFound) {
+                            commonArtBytes = bytes
+                            anyArtFound = true
+                        } else if (!artInconsistent && !bytes.contentEquals(commonArtBytes)) {
+                            artInconsistent = true
                         }
                     }
-                }
+
+                    // Check Artist
+                    val artist = tag?.getFirst(FieldKey.ARTIST)
+                    if (!artist.isNullOrBlank()) {
+                        if (!anyArtistFound) {
+                            commonArtist = artist
+                            anyArtistFound = true
+                        } else if (!artistInconsistent && artist != commonArtist) {
+                            artistInconsistent = true
+                        }
+                    }
+
+                    // Check Album
+                    val album = tag?.getFirst(FieldKey.ALBUM)
+                    if (!album.isNullOrBlank()) {
+                        if (!anyAlbumFound) {
+                            commonAlbum = album
+                            anyAlbumFound = true
+                        } else if (!albumInconsistent && album != commonAlbum) {
+                            albumInconsistent = true
+                        }
+                    }
+
+                    // Check Year
+                    val year = tag?.getFirst(FieldKey.YEAR)
+                    if (!year.isNullOrBlank()) {
+                        if (!anyYearFound) {
+                            commonYear = year
+                            anyYearFound = true
+                        } else if (!yearInconsistent && year != commonYear) {
+                            yearInconsistent = true
+                        }
+                    }
+
+                    tempFile.delete()
+                } catch (_: Exception) { }
             }
 
             withContext(Dispatchers.Main) {
-                if (anyArtFound && !inconsistent && commonArtBytes != null) {
+                // Update UI Artwork
+                if (anyArtFound && !artInconsistent && commonArtBytes != null) {
                     selectedArtBitmap = BitmapFactory.decodeByteArray(commonArtBytes, 0, commonArtBytes.size)
                     binding.ivAlbumArt.setImageBitmap(selectedArtBitmap)
                 } else {
                     selectedArtBitmap = null
                     binding.ivAlbumArt.setImageResource(R.drawable.ic_album)
                 }
-            }
-        }
-    }
 
-    private fun getArtworkBytes(uri: Uri): ByteArray? {
-        return try {
-            val originalName = DocumentFile.fromSingleUri(this, uri)?.name ?: "temp.mp3"
-            val extension = if (originalName.contains(".")) {
-                originalName.substring(originalName.lastIndexOf("."))
-            } else {
-                ".mp3"
+                // Update UI Fields
+                binding.etArtistBatch.setText(if (artistInconsistent) "--" else commonArtist ?: "")
+                binding.etAlbumBatch.setText(if (albumInconsistent) "--" else commonAlbum ?: "")
+                binding.etYearBatch.setText(if (yearInconsistent) "--" else commonYear ?: "")
+                
+                // Auto-fill search fields too
+                if (!artistInconsistent && !commonArtist.isNullOrBlank()) {
+                    binding.etArtistSearch.setText(commonArtist)
+                }
+                if (!albumInconsistent && !commonAlbum.isNullOrBlank()) {
+                    binding.etAlbumSearch.setText(commonAlbum)
+                }
             }
-            val tempFile = File.createTempFile("art_check", extension, cacheDir)
-            contentResolver.openInputStream(uri)?.use { input ->
-                tempFile.outputStream().use { output -> input.copyTo(output) }
-            }
-            val audioFile = AudioFileIO.read(tempFile)
-            val bytes = audioFile.tag?.firstArtwork?.binaryData
-            tempFile.delete()
-            bytes
-        } catch (_: Exception) {
-            null
         }
     }
 

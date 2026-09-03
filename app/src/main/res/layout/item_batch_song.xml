@@ -37,7 +37,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="11sp"
             android:textStyle="bold"
             android:ellipsize="end"
             android:singleLine="true" />
@@ -47,8 +47,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="#00BFFF"
-            android:textSize="12sp"
-            android:layout_marginTop="2dp"
+            android:textSize="9sp"
+            android:layout_marginTop="1dp"
             android:ellipsize="end"
             android:singleLine="true" />
     </LinearLayout>
