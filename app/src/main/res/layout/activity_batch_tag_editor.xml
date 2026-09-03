@@ -1,313 +1,333 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#121212"
-    android:padding="8dp">
+    android:background="#121212">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Batch Tag Editor (Mp3tag Style)"
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="4dp" />
-
+    <!-- Header Section -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
+        android:padding="8dp"
         android:gravity="center_vertical"
-        android:layout_marginBottom="4dp">
+        android:background="#1A1A1A">
 
         <ImageView
             android:id="@+id/ivAlbumArt"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
             android:src="@drawable/ic_album"
             android:scaleType="centerCrop"
-            android:background="#222222"
-            android:layout_marginEnd="8dp" />
+            android:background="#222222" />
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:layout_marginStart="12dp">
 
             <TextView
                 android:id="@+id/tvCurrentFolder"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="No folder selected"
-                android:textColor="#DDDDDD"
-                android:textSize="10sp"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold"
                 android:maxLines="1"
-                android:ellipsize="middle"
-                android:layout_marginBottom="4dp" />
+                android:ellipsize="middle" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:layout_marginTop="4dp">
 
                 <Button
                     android:id="@+id/btnSelectFolder"
                     android:layout_width="0dp"
-                    android:layout_height="36dp"
-                    android:layout_weight="1.2"
-                    android:text="Select Folder"
+                    android:layout_height="32dp"
+                    android:layout_weight="1"
+                    android:text="FOLDER"
                     android:backgroundTint="#333333"
                     android:textColor="#FFFFFF"
                     android:textSize="10sp"
-                    android:layout_marginEnd="4dp"
                     android:padding="0dp" />
 
                 <Button
                     android:id="@+id/btnSelectArt"
                     android:layout_width="0dp"
-                    android:layout_height="36dp"
+                    android:layout_height="32dp"
                     android:layout_weight="1"
-                    android:text="Set Cover"
+                    android:text="COVER"
                     android:backgroundTint="#333333"
                     android:textColor="#FFFFFF"
                     android:textSize="10sp"
-                    android:padding="0dp" />
-
-                <!-- Miniatura de carátula sugerida (buscada junto a la info del álbum) -->
-                <ImageView
-                    android:id="@+id/ivSuggestedCover"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
                     android:layout_marginStart="4dp"
-                    android:background="#3300FF00"
-                    android:scaleType="centerCrop"
-                    android:contentDescription="Suggested cover"
-                    android:visibility="gone" />
+                    android:padding="0dp" />
             </LinearLayout>
         </LinearLayout>
+
+        <ImageView
+            android:id="@+id/ivSuggestedCover"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="#3300FF00"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
     </LinearLayout>
 
-    <!-- Pattern Section -->
-    <LinearLayout
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:layout_marginTop="8dp"
-        android:background="#1A1A1A"
-        android:padding="2dp">
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:orientation="vertical"
+            android:padding="8dp">
 
-            <androidx.appcompat.widget.AppCompatSpinner
-                android:id="@+id/spinnerPatterns"
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1.3"
-                android:backgroundTint="#44FFFFFF"
-                android:background="#222222" />
+            <!-- Batch Editor Panel -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="BATCH EDITOR (Manual / Selected)"
+                android:textColor="#00BFFF"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp" />
 
-            <Button
-                android:id="@+id/btnApplyPattern"
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1"
-                android:text="Nombre→Tag"
-                android:textColor="#FFFFFF"
-                android:textSize="9sp"
-                android:backgroundTint="#444444"
-                android:padding="0dp"
-                android:layout_marginStart="4dp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="#1A1A1A"
+                android:padding="8dp">
 
-            <Button
-                android:id="@+id/btnRenameFiles"
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1"
-                android:text="Tag→Nombre"
-                android:textColor="#FFFFFF"
-                android:textSize="9sp"
-                android:backgroundTint="#444444"
-                android:padding="0dp"
-                android:layout_marginStart="4dp" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <EditText android:id="@+id/etArtistBatch" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:hint="Artist" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" />
+                    <EditText android:id="@+id/etAlbumBatch" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:hint="Album" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:layout_marginStart="4dp" />
+                </LinearLayout>
 
-            <Button
-                android:id="@+id/btnNumberTracks"
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1"
-                android:text="Numerar"
-                android:textColor="#FFFFFF"
-                android:textSize="9sp"
-                android:backgroundTint="#444444"
-                android:padding="0dp"
-                android:layout_marginStart="4dp" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/etYearBatch" android:layout_width="0dp" android:layout_weight="0.6" android:layout_height="wrap_content" android:hint="Year" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:inputType="number" />
+                    <EditText android:id="@+id/etGenreBatch" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:hint="Genre" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:layout_marginStart="4dp" />
+                    <EditText android:id="@+id/etDiscBatch" android:layout_width="0dp" android:layout_weight="0.4" android:layout_height="wrap_content" android:hint="Disc" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:layout_marginStart="4dp" android:inputType="number" />
+                </LinearLayout>
+
+                <EditText android:id="@+id/etAlbumArtistBatch" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Album Artist" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:layout_marginTop="4dp" />
+                <EditText android:id="@+id/etComposerBatch" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Composer" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:layout_marginTop="4dp" />
+                <EditText android:id="@+id/etCommentBatch" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Comment" android:textColor="#FFFFFF" android:textSize="12sp" android:backgroundTint="#444444" android:layout_marginTop="4dp" />
+
+                <Button
+                    android:id="@+id/btnApplyManualTags"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
+                    android:text="Apply to Selected"
+                    android:backgroundTint="#00BFFF"
+                    android:textColor="#FFFFFF"
+                    android:textSize="10sp"
+                    android:layout_marginTop="8dp" />
+            </LinearLayout>
+
+            <!-- Pattern Section -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="AUTO-FILL TOOLS"
+                android:textColor="#00BFFF"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="4dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="#1A1A1A"
+                android:padding="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <androidx.appcompat.widget.AppCompatSpinner
+                        android:id="@+id/spinnerPatterns"
+                        android:layout_width="0dp"
+                        android:layout_height="36dp"
+                        android:layout_weight="1"
+                        android:background="#222222" />
+
+                    <Button
+                        android:id="@+id/btnApplyPattern"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="Filename→Tag"
+                        android:textColor="#FFFFFF"
+                        android:textSize="9sp"
+                        android:backgroundTint="#444444"
+                        android:layout_marginStart="4dp" />
+                </LinearLayout>
+
+                <EditText
+                    android:id="@+id/etPattern"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Custom Pattern: %track% - %title%"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:backgroundTint="#22FFFFFF"
+                    android:layout_marginTop="4dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp">
+                    <Button android:id="@+id/btnRenameFiles" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:text="Tag→Filename" android:textColor="#FFFFFF" android:textSize="9sp" android:backgroundTint="#444444" />
+                    <Button android:id="@+id/btnNumberTracks" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:text="Numbering" android:textColor="#FFFFFF" android:textSize="9sp" android:backgroundTint="#444444" android:layout_marginStart="4dp" />
+                    <Button android:id="@+id/btnFetchInternet" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:text="WEB SEARCH" android:textColor="#FFFFFF" android:textSize="9sp" android:backgroundTint="#6200EE" android:layout_marginStart="4dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Search Section (Hidden by default, used for web search) -->
+            <LinearLayout
+                android:id="@+id/webSearchPanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp"
+                android:visibility="gone">
+                <EditText android:id="@+id/etArtistSearch" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:hint="Web Artist" android:textColor="#FFFFFF" android:textSize="12sp" />
+                <EditText android:id="@+id/etAlbumSearch" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:hint="Web Album" android:textColor="#FFFFFF" android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="16dp"
+                android:gravity="center_vertical">
+                <CheckBox
+                    android:id="@+id/cbSelectAll"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true"
+                    android:buttonTint="#00BFFF" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="FILE LIST (Drag to reorder)"
+                    android:textColor="#FFFFFF"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/tvFileCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0 files"
+                    android:textColor="#AAAAAA"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvSongs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="#161616"
+                android:nestedScrollingEnabled="false" />
+
+            <!-- Online reference (smaller) -->
+            <TextView
+                android:id="@+id/tvWebRefLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="WEB REFERENCE (MusicBrainz)"
+                android:textColor="#00BFFF"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp"
+                android:visibility="gone" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvMetadata"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#181818"
+                android:visibility="gone" />
+
         </LinearLayout>
-
-        <EditText
-            android:id="@+id/etPattern"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Custom Pattern: %track% - %title%"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#666666"
-            android:textSize="12sp"
-            android:inputType="text"
-            android:autofillHints="none"
-            android:backgroundTint="#22FFFFFF" />
-    </LinearLayout>
-
-    <!-- Search Section -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="8dp"
-        android:gravity="center_vertical">
-        <EditText
-            android:id="@+id/etArtistSearch"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="Artist"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#666666"
-            android:textSize="12sp"
-            android:inputType="text"
-            android:autofillHints="none"
-            android:backgroundTint="#22FFFFFF" />
-        <EditText
-            android:id="@+id/etAlbumSearch"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="Album"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#666666"
-            android:textSize="12sp"
-            android:inputType="text"
-            android:autofillHints="none"
-            android:backgroundTint="#22FFFFFF" />
-        <Button
-            android:id="@+id/btnFetchInternet"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="Web Search"
-            android:textColor="#FFFFFF"
-            android:textSize="10sp"
-            android:backgroundTint="#444444"
-            android:layout_marginStart="4dp" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:weightSum="2"
-        android:layout_marginTop="8dp">
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="LOCAL FILES (Drag)"
-            android:textColor="#FFFFFF"
-            android:textSize="9sp"
-            android:gravity="center"
-            android:textStyle="bold" />
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="ALBUM METADATA"
-            android:textColor="#FFFFFF"
-            android:textSize="9sp"
-            android:gravity="center"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="horizontal"
-        android:weightSum="2">
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvSongs"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:background="#161616" />
-
-        <View
-            android:layout_width="0.5dp"
-            android:layout_height="match_parent"
-            android:background="#333333" />
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvMetadata"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:background="#181818" />
-    </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
     <!-- Bottom Controls -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="8dp">
+        android:padding="8dp"
+        android:background="#1A1A1A">
 
-        <!-- Agrega un hueco vacío en la lista local para saltar una pista faltante -->
         <Button
             android:id="@+id/btnAddPlaceholder"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="0.6"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:text="+"
             android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:backgroundTint="#444444"
-            android:layout_marginEnd="2dp" />
+            android:textSize="18sp"
+            android:backgroundTint="#444444" />
 
         <Button
             android:id="@+id/btnSortAlpha"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:layout_weight="1"
             android:text="A-Z"
             android:textColor="#FFFFFF"
-            android:textSize="9sp"
+            android:textSize="10sp"
             android:backgroundTint="#444444"
-            android:layout_marginEnd="2dp" />
+            android:layout_marginStart="4dp" />
+
         <Button
             android:id="@+id/btnClearTags"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:layout_weight="1"
-            android:text="Clear"
+            android:text="RESET"
             android:textColor="#FFFFFF"
-            android:textSize="9sp"
+            android:textSize="10sp"
             android:backgroundTint="#444444"
-            android:layout_marginEnd="2dp" />
+            android:layout_marginStart="4dp" />
+
         <Button
             android:id="@+id/btnSaveAll"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:layout_weight="2.5"
-            android:text="SAVE TAGS"
+            android:text="SAVE ALL"
             android:textColor="#FFFFFF"
-            android:textSize="9sp"
-            android:backgroundTint="#444444" />
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:backgroundTint="#008000"
+            android:layout_marginStart="4dp" />
     </LinearLayout>
 
 </LinearLayout>

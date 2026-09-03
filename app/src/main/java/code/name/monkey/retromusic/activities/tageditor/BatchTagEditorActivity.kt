@@ -9,11 +9,14 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.provider.DocumentsContract
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.Observer
@@ -105,9 +108,15 @@ class BatchTagEditorActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerViews() {
-        adapter = BatchSongAdapter(mutableListOf())
+        adapter = BatchSongAdapter(mutableListOf()) { index, item ->
+            showEditDialog(index, item)
+        }
         binding.rvSongs.layoutManager = LinearLayoutManager(this)
         binding.rvSongs.adapter = adapter
+
+        // Listener para editar ítem individual (Título/Track) al hacer click
+        // En una app real esto abriría un diálogo, por ahora lo simplificamos
+        // implementándolo en el adapter si es necesario, o usando una interfaz.
 
         metadataAdapter = MetadataReferenceAdapter(emptyList())
         binding.rvMetadata.layoutManager = LinearLayoutManager(this)
@@ -143,14 +152,24 @@ class BatchTagEditorActivity : AppCompatActivity() {
     private fun setupObservers() {
         viewModel.songs.observe(this, Observer { songs ->
             adapter.updateItems(songs)
+            binding.tvFileCount.text = "${songs.count { !it.isPlaceholder }} files"
         })
 
         viewModel.mbTracks.observe(this, Observer { tracks ->
-            metadataAdapter.updateItems(tracks)
+            if (tracks.isNotEmpty()) {
+                binding.rvMetadata.visibility = View.VISIBLE
+                binding.tvWebRefLabel.visibility = View.VISIBLE
+                metadataAdapter.updateItems(tracks)
+            } else {
+                binding.rvMetadata.visibility = View.GONE
+                binding.tvWebRefLabel.visibility = View.GONE
+            }
         })
 
         viewModel.status.observe(this, Observer { status ->
-            Toast.makeText(this, status, Toast.LENGTH_SHORT).show()
+            if (!status.isNullOrBlank()) {
+                Toast.makeText(this, status, Toast.LENGTH_SHORT).show()
+            }
         })
 
         viewModel.suggestedCoverArt.observe(this, Observer { bitmap ->
@@ -166,6 +185,25 @@ class BatchTagEditorActivity : AppCompatActivity() {
     private fun setupListeners() {
         binding.btnSelectFolder.setOnClickListener {
             folderPickerLauncher.launch(null)
+        }
+
+        binding.cbSelectAll.setOnCheckedChangeListener { _, isChecked ->
+            viewModel.setAllSelected(isChecked)
+        }
+
+        binding.btnApplyManualTags.setOnClickListener {
+            val manualTags = TagFields(
+                artist = binding.etArtistBatch.text.toString().takeIf { it.isNotBlank() },
+                album = binding.etAlbumBatch.text.toString().takeIf { it.isNotBlank() },
+                year = binding.etYearBatch.text.toString().takeIf { it.isNotBlank() },
+                genre = binding.etGenreBatch.text.toString().takeIf { it.isNotBlank() },
+                albumArtist = binding.etAlbumArtistBatch.text.toString().takeIf { it.isNotBlank() },
+                composer = binding.etComposerBatch.text.toString().takeIf { it.isNotBlank() },
+                discNumber = binding.etDiscBatch.text.toString().takeIf { it.isNotBlank() },
+                comment = binding.etCommentBatch.text.toString().takeIf { it.isNotBlank() }
+            )
+            viewModel.batchApplyManualTags(manualTags)
+            Toast.makeText(this, "Manual tags applied to selected", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnApplyPattern.setOnClickListener {
@@ -372,6 +410,10 @@ class BatchTagEditorActivity : AppCompatActivity() {
                 if (!it.track.isNullOrBlank()) tag.setField(FieldKey.TRACK, it.track)
                 if (!it.year.isNullOrBlank()) tag.setField(FieldKey.YEAR, it.year)
                 if (!it.genre.isNullOrBlank()) tag.setField(FieldKey.GENRE, it.genre)
+                if (!it.albumArtist.isNullOrBlank()) tag.setField(FieldKey.ALBUM_ARTIST, it.albumArtist)
+                if (!it.composer.isNullOrBlank()) tag.setField(FieldKey.COMPOSER, it.composer)
+                if (!it.discNumber.isNullOrBlank()) tag.setField(FieldKey.DISC_NO, it.discNumber)
+                if (!it.comment.isNullOrBlank()) tag.setField(FieldKey.COMMENT, it.comment)
             }
 
             artFile?.let {
@@ -443,6 +485,32 @@ class BatchTagEditorActivity : AppCompatActivity() {
      * almacenamiento interno principal. Devuelve null si no se puede resolver
      * (por ejemplo, si el archivo está en una tarjeta SD externa).
      */
+    private fun showEditDialog(index: Int, item: BatchSongItem) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_tag_single, null)
+        val etTitle = dialogView.findViewById<EditText>(R.id.etTitle)
+        val etTrack = dialogView.findViewById<EditText>(R.id.etTrack)
+        val etArtist = dialogView.findViewById<EditText>(R.id.etArtist)
+
+        val currentTags = item.pendingTags ?: TagFields()
+        etTitle.setText(currentTags.title ?: "")
+        etTrack.setText(currentTags.track ?: "")
+        etArtist.setText(currentTags.artist ?: "")
+
+        AlertDialog.Builder(this)
+            .setTitle("Edit Individual Track")
+            .setView(dialogView)
+            .setPositiveButton("Apply") { _, _ ->
+                val newTags = currentTags.copy(
+                    title = etTitle.text.toString(),
+                    track = etTrack.text.toString(),
+                    artist = etArtist.text.toString()
+                )
+                viewModel.updateSingleItemTags(index, newTags)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun getRealPathFromDocumentUri(uri: Uri): String? {
         return try {
             val docId = DocumentsContract.getDocumentId(uri)

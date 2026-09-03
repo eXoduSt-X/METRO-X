@@ -9,12 +9,19 @@ data class TagFields(
     val track: String? = null,
     val year: String? = null,
     val genre: String? = null,
+    val albumArtist: String? = null,
+    val composer: String? = null,
+    val discNumber: String? = null,
+    val comment: String? = null,
     val duration: String? = null
 )
 
 object PatternEngine {
 
-    private val placeholders = listOf("%title%", "%artist%", "%album%", "%track%", "%year%", "%genre%")
+    private val placeholders = listOf(
+        "%title%", "%artist%", "%album%", "%track%", "%year%", "%genre%",
+        "%albumArtist%", "%composer%", "%disc%", "%comment%"
+    )
 
     /**
      * Renombra un archivo o genera una sugerencia de nombre basada en etiquetas.
@@ -28,6 +35,10 @@ object PatternEngine {
         result = result.replace("%track%", tags.track ?: "")
         result = result.replace("%year%", tags.year ?: "")
         result = result.replace("%genre%", tags.genre ?: "")
+        result = result.replace("%albumArtist%", tags.albumArtist ?: "")
+        result = result.replace("%composer%", tags.composer ?: "")
+        result = result.replace("%disc%", tags.discNumber ?: "")
+        result = result.replace("%comment%", tags.comment ?: "")
 
         // Sanitizar caracteres no permitidos en sistemas de archivos
         return result.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
@@ -71,6 +82,10 @@ object PatternEngine {
         var track: String? = null
         var year: String? = null
         var genre: String? = null
+        var albumArtist: String? = null
+        var composer: String? = null
+        var disc: String? = null
+        var comment: String? = null
 
         foundPlaceholders.forEachIndexed { index, p ->
             val value = values[index].trim()
@@ -81,10 +96,14 @@ object PatternEngine {
                 "%track%" -> track = value
                 "%year%" -> year = value
                 "%genre%" -> genre = value
+                "%albumArtist%" -> albumArtist = value
+                "%composer%" -> composer = value
+                "%disc%" -> disc = value
+                "%comment%" -> comment = value
             }
         }
 
-        return TagFields(title, artist, album, track, year, genre)
+        return TagFields(title, artist, album, track, year, genre, albumArtist, composer, disc, comment)
     }
 
     fun splitExtension(filename: String): Pair<String, String> {

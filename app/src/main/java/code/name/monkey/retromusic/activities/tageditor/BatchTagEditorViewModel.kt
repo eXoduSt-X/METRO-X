@@ -36,6 +36,41 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
         _songs.value = newSongs
     }
 
+    fun setAllSelected(selected: Boolean) {
+        val currentList = _songs.value?.toMutableList() ?: return
+        currentList.forEach { it.isSelected = selected }
+        _songs.value = currentList
+    }
+
+    fun batchApplyManualTags(manualTags: TagFields) {
+        val currentSongs = _songs.value?.toMutableList() ?: return
+        currentSongs.forEach { item ->
+            if (item.isSelected && !item.isPlaceholder) {
+                // Aplicar solo los campos que no son nulos ni vacíos en manualTags
+                val current = item.pendingTags ?: TagFields()
+                item.pendingTags = current.copy(
+                    artist = if (!manualTags.artist.isNullOrBlank()) manualTags.artist else current.artist,
+                    album = if (!manualTags.album.isNullOrBlank()) manualTags.album else current.album,
+                    year = if (!manualTags.year.isNullOrBlank()) manualTags.year else current.year,
+                    genre = if (!manualTags.genre.isNullOrBlank()) manualTags.genre else current.genre,
+                    albumArtist = if (!manualTags.albumArtist.isNullOrBlank()) manualTags.albumArtist else current.albumArtist,
+                    composer = if (!manualTags.composer.isNullOrBlank()) manualTags.composer else current.composer,
+                    discNumber = if (!manualTags.discNumber.isNullOrBlank()) manualTags.discNumber else current.discNumber,
+                    comment = if (!manualTags.comment.isNullOrBlank()) manualTags.comment else current.comment
+                )
+            }
+        }
+        _songs.value = currentSongs
+    }
+
+    fun updateSingleItemTags(index: Int, newTags: TagFields) {
+        val currentSongs = _songs.value?.toMutableList() ?: return
+        if (index in currentSongs.indices) {
+            currentSongs[index].pendingTags = newTags
+            _songs.value = currentSongs
+        }
+    }
+
     fun applyPattern(pattern: String) {
         val currentList = _songs.value ?: return
         currentList.forEach { item ->

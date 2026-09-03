@@ -3,6 +3,7 @@ package code.name.monkey.retromusic.activities.tageditor
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -14,16 +15,21 @@ data class BatchSongItem(
     val document: DocumentFile?,        // ahora nullable para soportar huecos vacíos
     var pendingTags: TagFields? = null,
     val durationText: String? = null,
-    val isPlaceholder: Boolean = false  // hueco vacío sin archivo real (botón "+")
+    val isPlaceholder: Boolean = false, // hueco vacío sin archivo real (botón "+")
+    var isSelected: Boolean = true      // para edición por lotes manual
 )
 
-class BatchSongAdapter(private var items: MutableList<BatchSongItem>) :
+class BatchSongAdapter(
+    private var items: MutableList<BatchSongItem>,
+    private val onItemClick: (Int, BatchSongItem) -> Unit
+) :
     RecyclerView.Adapter<BatchSongAdapter.ViewHolder>() {
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvFilename: TextView = view.findViewById(R.id.tvFilename)
         val tvDetails: TextView = view.findViewById(R.id.tvDetails)
         val ivDragHandle: ImageView = view.findViewById(R.id.ivDragHandle)
+        val cbSelected: CheckBox = view.findViewById(R.id.cbSelected)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -49,7 +55,17 @@ class BatchSongAdapter(private var items: MutableList<BatchSongItem>) :
         holder.tvFilename.text = item.document?.name ?: "—"
         holder.tvFilename.setTextColor(0xFFFFFFFF.toInt())
 
+        holder.cbSelected.setOnCheckedChangeListener(null)
+        holder.cbSelected.isChecked = item.isSelected
+        holder.cbSelected.setOnCheckedChangeListener { _, isChecked ->
+            item.isSelected = isChecked
+        }
+
         val durationInfo = if (!item.durationText.isNullOrEmpty()) " [${item.durationText}]" else ""
+
+        holder.itemView.setOnClickListener {
+            onItemClick(position, item)
+        }
 
         val tags = item.pendingTags
         if (tags != null) {

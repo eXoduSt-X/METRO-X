@@ -68,6 +68,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import java.util.*
 import code.name.monkey.retromusic.fragments.ReloadType
+import android.media.MediaExtractor
+import android.media.MediaFormat
 
 data class Subtitle(val startTime: Long, val endTime: Long, val original: String, val translation: String?)
 
@@ -90,6 +92,23 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     private var isProcessing = false
     private var selectedAudioUri: Uri? = null
     private var selectedAudioUris = mutableListOf<Uri>()
+
+    private val multiplexAudioUris = mutableListOf<Uri>()
+    private val multiplexSubtitleUris = mutableListOf<Uri>()
+
+    private val mAudioPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            multiplexAudioUris.add(it)
+            askForAnotherAudio()
+        } ?: askForSubtitleStep()
+    }
+
+    private val mSubPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            multiplexSubtitleUris.add(it)
+            askForAnotherSubtitle()
+        } ?: generateMultiplexMKV()
+    }
 
     private var workshopSubtitleIndex = -1
 
@@ -325,6 +344,27 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
     }
 
+    private fun detectarStreams(file: File): Pair<List<Int>, List<Int>> {
+        val audioIndices = mutableListOf<Int>()
+        val subtitleIndices = mutableListOf<Int>()
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.absolutePath)
+            for (i in 0 until extractor.trackCount) {
+                val format = extractor.getTrackFormat(i)
+                val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
+                when {
+                    mime.startsWith("audio/") -> audioIndices.add(i)
+                    mime.startsWith("text/") || mime.startsWith("application/") -> subtitleIndices.add(i)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MediaExtractorCheck", "Error leyendo tracks: ${e.message}")
+        } finally {
+            extractor.release()
+        }
+        return audioIndices to subtitleIndices
+    }
 
     private fun refrescarListaVideos() {
         val folderUri = selectedFolderUri ?: loadSavedFolderUri()
@@ -739,23 +779,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
         setFixedIcon(binding.homeContent.btnPrevVideo, R.drawable.ic_skip_previous)
         setFixedIcon(binding.homeContent.btnNextVideo, R.drawable.ic_skip_next)
-
         setFixedIcon(binding.homeContent.btnMergeVideos, R.drawable.ic_unir)
         setFixedIcon(binding.homeContent.btnSplit, R.drawable.ic_cut)
-        setFixedIcon(binding.homeContent.btnMixVideo, R.drawable.ic_mkv)
-        setFixedIcon(binding.homeContent.btnFullscreen, R.drawable.ic_replace)
-        setFixedIcon(binding.homeContent.btnLoadSubtitles, R.drawable.ic_srt)
-        setFixedIcon(binding.homeContent.btnOpenFile, R.drawable.ic_vid)
-        setFixedIcon(binding.homeContent.btnChooseFolder, R.drawable.ic_vfolder)
-        setFixedIcon(binding.homeContent.btnConvertAudio, R.drawable.ic_mp3)
-        setFixedIcon(binding.homeContent.btnLoadSubtitles, R.drawable.ic_srt)
-        setFixedIcon(binding.homeContent.btnHardcodeSubtitles, R.drawable.ic_srtb)
-        setFixedIcon(binding.homeContent.btnHardcodeAssSubtitles, R.drawable.ic_ass)
-        setFixedIcon(binding.homeContent.btnSubtitleWorkshop, R.drawable.ic_edit)
-        setFixedIcon(binding.homeContent.btnCreateVideoFromPhotos, R.drawable.ic_slide)
-        setFixedIcon(binding.homeContent.btnCreateGif, R.drawable.ic_gif)
         setFixedIcon(binding.homeContent.btnYoutubeDownload, R.drawable.ic_youtube, 130, 29)
-        setFixedIcon(binding.homeContent.btnTagEditor, R.drawable.ic_dashboard)
         setFixedIcon(binding.homeContent.btnApplyFade, R.drawable.ic_fade)
         setPlayPauseIcon(false)
 
@@ -803,6 +829,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                         if (playbackState == Player.STATE_READY) {
                             binding.homeContent.videoSeekBar.max = player.duration.toInt()
                             binding.homeContent.tvTotalTime.text = formatTime(player.duration.toInt())
+                            actualizarVisibilidadSelectorPistas()
                         }
                     }
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -822,12 +849,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     }
 
     private fun setupVideoListeners() {
-        binding.homeContent.btnOpenFile.setOnClickListener { videoPickerLauncher.launch("video/*") }
-        binding.homeContent.btnLoadSubtitles.setOnClickListener { subtitlePickerLauncher.launch("*/*") }
-        binding.homeContent.btnChooseFolder.setOnClickListener {
-            folderPickerLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
-        }
-
+        
         binding.homeContent.videoSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) exoPlayer?.seekTo(progress.toLong())
@@ -892,54 +914,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             true
         }
 
-        binding.homeContent.btnMixVideo.setOnClickListener {
-            if (videoPlaylist.isEmpty()) {
-                Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            val workshopText = binding.homeContent.etSubtitleWorkshop.text.toString()
-            if (workshopText.contains("[")) {
-                // Hay subtítulos en el Workshop, usarlos directamente
-                val fileName = "Temp_Workshop_${System.currentTimeMillis()}.srt"
-                val tempFile = File(requireContext().cacheDir, fileName)
-                
-                val lines = workshopText.split("\n").filter { it.isNotBlank() }
-                val srtContent = StringBuilder()
-                val stampRegex = "\\[(\\d{2}:\\d{2}\\.\\d{2})\\]".toRegex()
-
-                for (i in lines.indices) {
-                    val currentLine = lines[i]
-                    val match = stampRegex.find(currentLine) ?: continue
-                    val startTimeMs = lrcTimeToMs(match.value)
-                    val endTimeMs = if (i < lines.size - 1) {
-                        val nextMatch = stampRegex.find(lines[i + 1])
-                        if (nextMatch != null) lrcTimeToMs(nextMatch.value) else startTimeMs + 2000
-                    } else startTimeMs + 2000
-                    val subtitleText = currentLine.replace(stampRegex, "").trim()
-                    srtContent.append("${i + 1}\n${formatTimeSrt(startTimeMs)} --> ${formatTimeSrt(endTimeMs)}\n$subtitleText\n\n")
-                }
-                
-                tempFile.writeText(srtContent.toString())
-                createMkvWithSubtitles(videoPlaylist[currentIndex], Uri.fromFile(tempFile), selectedAudioUri)
-            } else if (selectedSubtitleUri != null) {
-                // Usar el archivo SRT cargado
-                createMkvWithSubtitles(videoPlaylist[currentIndex], selectedSubtitleUri!!, selectedAudioUri)
-            } else {
-                // No hay nada, pedir archivo
-                Toast.makeText(requireContext(), "Carga un SRT o escribe en el Workshop", Toast.LENGTH_SHORT).show()
-                subtitlePickerLauncher.launch("*/*")
-            }
-        }
-
-        binding.homeContent.btnFullscreen.setOnClickListener {
-            if (videoPlaylist.isEmpty()) {
-                Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            audioForVideoPickerLauncher.launch("audio/*")
-        }
-
+        
         binding.homeContent.btnSetStart.setOnClickListener {
             exoPlayer?.let { binding.homeContent.etStartTime.setText(formatTime(it.currentPosition.toInt())) }
         }
@@ -956,74 +931,122 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             }
         }
 
-        binding.homeContent.btnHardcodeAssSubtitles.setOnClickListener {
-            if (videoPlaylist.isEmpty()) {
-                Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            if (subtitleList.isEmpty()) {
-                Toast.makeText(requireContext(), "Primero cargá subtítulos con SUBS para previsualizarlos", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            AlertDialog.Builder(requireContext())
-                .setTitle(R.string.incrustar_subtitulos_title)
-                .setMessage(R.string.incrustar_subtitulos_message)
-                .setPositiveButton(R.string.done) { _, _ -> hardcodearSubtitulosAss() }
-                .setNegativeButton(R.string.action_cancel, null)
-                .show()
-        }
-
-
-        binding.homeContent.btnCreateVideoFromPhotos.setOnClickListener {
-            if (slideshowImages.isEmpty()) photosPickerLauncher.launch("image/*") else crearVideoDesdeFotos(slideshowImages)
-        }
+        
 
         binding.homeContent.btnMergeVideos.setOnClickListener {
             if (mergeVideosUris.isEmpty()) mergePickerLauncher.launch("video/*") else unirVideos(mergeVideosUris)
         }
-        binding.homeContent.btnConvertAudio.setOnClickListener { multiaudioPickerLauncher.launch("audio/*") }
-
-        binding.homeContent.btnCreateGif.setOnClickListener {
-            if (videoPlaylist.isNotEmpty()) convertirVideoAGif(videoPlaylist[currentIndex]) else Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
-        }
-
-        binding.homeContent.btnTagEditor.setOnClickListener {
-            startActivity(Intent(requireContext(), code.name.monkey.retromusic.activities.tageditor.BatchTagEditorActivity::class.java))
-        }
-
+  
         binding.homeContent.btnYoutubeDownload.setOnClickListener {
             findNavController().navigate(R.id.youtube_downloader_fragment)
         }
 
         binding.homeContent.btnApplyFade.setOnClickListener { aplicarFadeCombinado() }
 
+        binding.homeContent.btnTrackSelector.setOnClickListener { mostrarSelectorPistas() }
+
         setupSubtitleWorkshopListeners()
+        setupToolStrip()
+    }
+
+    private fun setupToolStrip() {
+        val tools = listOf(
+            ToolButtonItem("folder", R.drawable.ic_vfolder, "Carpeta"),
+            ToolButtonItem("video", R.drawable.ic_vid, "Video"),
+            ToolButtonItem("gif", R.drawable.ic_gif, "GIF"),
+            ToolButtonItem("slideshow", R.drawable.ic_slide, "Slideshow"),
+            ToolButtonItem("tageditor", R.drawable.ic_dashboard, "Mp3Tag"),
+            ToolButtonItem("tomp3", R.drawable.ic_mp3, "A MP3"),
+            ToolButtonItem("subs", R.drawable.ic_srt, "Subs"),
+            ToolButtonItem("demux", R.drawable.ic_restore, "Demux"),
+            ToolButtonItem("ass", R.drawable.ic_ass, "ASS"),
+            ToolButtonItem("workshop", R.drawable.ic_edit, "Workshop"),
+            ToolButtonItem("remux", R.drawable.ic_replace, "Remux"),
+            ToolButtonItem("multiplex", R.drawable.ic_mkv, "Multiplex")
+        )
+
+        binding.homeContent.rvToolStrip.apply {
+            layoutManager = LinearLayoutManager(requireContext(), RecyclerView.HORIZONTAL, false)
+            adapter = ToolButtonAdapter(tools) { id -> handleToolClick(id) }
+            setHasFixedSize(true)
+        }
+    }
+
+    private fun handleToolClick(id: String) {
+        when (id) {
+            "folder" -> folderPickerLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
+            "video" -> videoPickerLauncher.launch("video/*")
+            "gif" -> {
+                if (videoPlaylist.isNotEmpty()) convertirVideoAGif(videoPlaylist[currentIndex])
+                else Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
+            }
+            "slideshow" -> {
+                if (slideshowImages.isEmpty()) photosPickerLauncher.launch("image/*")
+                else crearVideoDesdeFotos(slideshowImages)
+            }
+            "tageditor" -> startActivity(
+                Intent(requireContext(), code.name.monkey.retromusic.activities.tageditor.BatchTagEditorActivity::class.java)
+            )
+            "tomp3" -> multiaudioPickerLauncher.launch("audio/*")
+            "subs" -> subtitlePickerLauncher.launch("*/*")
+            "demux" -> startDemuxFlow()
+            "ass" -> {
+                if (videoPlaylist.isEmpty()) {
+                    Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
+                    return
+                }
+                if (subtitleList.isEmpty()) {
+                    Toast.makeText(requireContext(), "Primero cargá subtítulos con SUBS para previsualizarlos", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                AlertDialog.Builder(requireContext())
+                    .setTitle(R.string.incrustar_subtitulos_title)
+                    .setMessage(R.string.incrustar_subtitulos_message)
+                    .setPositiveButton(R.string.done) { _, _ -> hardcodearSubtitulosAss() }
+                    .setNegativeButton(R.string.action_cancel, null)
+                    .show()
+            }
+            "workshop" -> toggleSubtitleWorkshop()
+            "remux" -> {
+                if (videoPlaylist.isEmpty()) {
+                    Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
+                    return
+                }
+                audioForVideoPickerLauncher.launch("audio/*")
+            }
+            "multiplex" -> {
+                if (videoPlaylist.isEmpty()) {
+                    Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
+                    return
+                }
+                startMultiplexFlow()
+            }
+        }
+    }
+
+    private fun toggleSubtitleWorkshop() {
+        val workshop = binding.homeContent.subtitleWorkshopContainer
+        if (workshop.visibility == View.VISIBLE) {
+            workshop.visibility = View.GONE
+        } else {
+            workshop.visibility = View.VISIBLE
+            if (subtitleList.isNotEmpty()) {
+                val lrcStyleText = StringBuilder()
+                subtitleList.forEach {
+                    lrcStyleText.append("${formatTimeLrc(it.startTime.toInt())} ${it.original}\n")
+                }
+                binding.homeContent.etSubtitleWorkshop.setText(lrcStyleText.toString())
+            }
+            binding.homeContent.btnWorkshopExportAss.setOnClickListener {
+                exportWorkshopToAss()
+            }
+            binding.homeContent.cbWorkshopMtvInfo.setOnCheckedChangeListener { _, isChecked ->
+                binding.homeContent.mtvInfoRow.visibility = if (isChecked) View.VISIBLE else View.GONE
+            }
+        }
     }
 
     private fun setupSubtitleWorkshopListeners() {
-        binding.homeContent.btnSubtitleWorkshop.setOnClickListener {
-            val workshop = binding.homeContent.subtitleWorkshopContainer
-            if (workshop.visibility == View.VISIBLE) {
-                workshop.visibility = View.GONE
-            } else {
-                workshop.visibility = View.VISIBLE
-                if (subtitleList.isNotEmpty()) {
-                    // Cargar SIEMPRE los subtítulos actuales al estilo LRC con corchetes
-                    val lrcStyleText = StringBuilder()
-                    subtitleList.forEach {
-                        lrcStyleText.append("${formatTimeLrc(it.startTime.toInt())} ${it.original}\n")
-                    }
-                    binding.homeContent.etSubtitleWorkshop.setText(lrcStyleText.toString())
-                }
-                binding.homeContent.btnWorkshopExportAss.setOnClickListener {
-                    exportWorkshopToAss()
-                }
-                binding.homeContent.cbWorkshopMtvInfo.setOnCheckedChangeListener { _, isChecked ->
-                    binding.homeContent.mtvInfoRow.visibility = if (isChecked) View.VISIBLE else View.GONE
-                }
-            }
-        }
-
         binding.homeContent.btnWorkshopStamp.setOnClickListener {
             handleWorkshopMarking()
         }
@@ -1038,6 +1061,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             exportWorkshopToSrt()
         }
     }
+
 
     private fun handleWorkshopMarking() {
         val et = binding.homeContent.etSubtitleWorkshop
@@ -1391,9 +1415,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         binding.appBarLayout.visibility = visibility
         binding.imageLayout.visibility = View.GONE
         binding.homeContent.absPlaylists.root.visibility = visibility
-        binding.homeContent.toolsRow.visibility = visibility
         binding.homeContent.cutRow.visibility = visibility
-        binding.homeContent.extraActionsContainer.visibility = visibility
+        binding.homeContent.rvToolStrip.visibility = visibility
         binding.homeContent.rvDownloads.visibility = visibility
         binding.homeContent.btnYoutubeDownload.visibility = visibility
         if (fullscreen) {
@@ -1637,8 +1660,10 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     private fun mostrarProgreso(totalDurationMs: Long = 0) {
         isProcessing = true
-        _binding?.homeContent?.progressBar?.let { pb -> pb.progress = 0; pb.isIndeterminate = totalDurationMs == 0L; pb.visibility = View.VISIBLE }
-        _binding?.homeContent?.tvSubtitleOverlay?.let { tv -> tv.text = getString(R.string.procesando_archivo); tv.visibility = View.VISIBLE }
+        activity?.runOnUiThread {
+            _binding?.homeContent?.progressBar?.let { pb -> pb.progress = 0; pb.isIndeterminate = totalDurationMs == 0L; pb.visibility = View.VISIBLE }
+            _binding?.homeContent?.tvSubtitleOverlay?.let { tv -> tv.text = getString(R.string.procesando_archivo); tv.visibility = View.VISIBLE }
+        }
     }
 
     private fun actualizarProgreso(currentTimeMs: Double, totalDurationMs: Long) {
@@ -1663,9 +1688,11 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     private fun ocultarProgreso() {
         isProcessing = false
-        _binding?.homeContent?.progressBar?.visibility = View.GONE
-        _binding?.homeContent?.tvSubtitleOverlay?.text = ""
-        _binding?.homeContent?.tvSubtitleOverlay?.visibility = View.GONE
+        activity?.runOnUiThread {
+            _binding?.homeContent?.progressBar?.visibility = View.GONE
+            _binding?.homeContent?.tvSubtitleOverlay?.text = ""
+            _binding?.homeContent?.tvSubtitleOverlay?.visibility = View.GONE
+        }
     }
 
     private fun getMediaDuration(uri: Uri): Long {
@@ -1926,6 +1953,297 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         val uri = requireContext().contentResolver.insert(collectionUri, contentValues)
         if (uri != null) try { requireContext().contentResolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }; requireActivity().runOnUiThread { Toast.makeText(requireContext(), getString(R.string.guardado_en_downloads), Toast.LENGTH_SHORT).show() } } catch (e: Exception) { requireActivity().runOnUiThread { Toast.makeText(requireContext(), "Error al guardar $fileName", Toast.LENGTH_SHORT).show() } }
     }
+
+    private fun startMultiplexFlow() {
+        multiplexAudioUris.clear()
+        multiplexSubtitleUris.clear()
+
+        val workshopText = binding.homeContent.etSubtitleWorkshop.text.toString()
+        if (workshopText.contains("[")) {
+            AlertDialog.Builder(requireContext())
+                .setTitle("Subtítulos del Workshop")
+                .setMessage("¿Deseas incluir los subtítulos escritos en el Workshop?")
+                .setPositiveButton("SÍ") { _, _ ->
+                    val fileName = "Temp_Workshop_${System.currentTimeMillis()}.srt"
+                    val tempFile = File(requireContext().cacheDir, fileName)
+                    val entries = buildWorkshopEntries()
+                    val srtContent = StringBuilder()
+                    entries.forEachIndexed { index, entry ->
+                        srtContent.append("${index + 1}\n${formatTimeSrt(entry.startMs)} --> ${formatTimeSrt(entry.endMs)}\n${entry.text}\n\n")
+                    }
+                    tempFile.writeText(srtContent.toString())
+                    multiplexSubtitleUris.add(Uri.fromFile(tempFile))
+                    askForAudioStep()
+                }
+                .setNegativeButton("NO") { _, _ -> askForAudioStep() }
+                .show()
+        } else {
+            askForAudioStep()
+        }
+    }
+
+    private fun askForAudioStep() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Agregar Audio")
+            .setMessage("¿Deseas agregar una pista de audio externa?")
+            .setPositiveButton("AGREGAR") { _, _ -> mAudioPickerLauncher.launch("audio/*") }
+            .setNegativeButton("SALTAR") { _, _ -> askForSubtitleStep() }
+            .show()
+    }
+
+    private fun askForAnotherAudio() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Audio Agregado")
+            .setMessage("¿Deseas agregar otra pista de audio?")
+            .setPositiveButton("SÍ") { _, _ -> mAudioPickerLauncher.launch("audio/*") }
+            .setNegativeButton("NO") { _, _ -> askForSubtitleStep() }
+            .show()
+    }
+
+    private fun askForSubtitleStep() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Agregar Subtítulos")
+            .setMessage("¿Deseas agregar un archivo de subtítulos?")
+            .setPositiveButton("AGREGAR") { _, _ -> mSubPickerLauncher.launch("*/*") }
+            .setNegativeButton("SALTAR") { _, _ -> generateMultiplexMKV() }
+            .show()
+    }
+
+    private fun askForAnotherSubtitle() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Subtítulo Agregado")
+            .setMessage("¿Deseas agregar otro archivo de subtítulos?")
+            .setPositiveButton("SÍ") { _, _ -> mSubPickerLauncher.launch("*/*") }
+            .setNegativeButton("NO") { _, _ -> generateMultiplexMKV() }
+            .show()
+    }
+
+    private fun generateMultiplexMKV() {
+        if (multiplexAudioUris.isEmpty() && multiplexSubtitleUris.isEmpty()) {
+            Toast.makeText(requireContext(), "No seleccionaste pistas adicionales", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val videoUri = videoPlaylist[currentIndex]
+        val duration = getMediaDuration(videoUri)
+        mostrarProgreso(duration)
+
+        Thread {
+            try {
+                val inputFiles = mutableListOf<File>()
+                val command = StringBuilder("-y ")
+
+                // 1. Video Input (index 0)
+                val videoFile = cacheUriToFile(videoUri, "mplex_video.mp4")
+                inputFiles.add(videoFile)
+                command.append("-i \"${videoFile.absolutePath}\" ")
+
+                // 2. Audio Inputs
+                multiplexAudioUris.forEachIndexed { i, uri ->
+                    val aFile = cacheUriToFile(uri, "mplex_audio_$i.tmp")
+                    inputFiles.add(aFile)
+                    command.append("-i \"${aFile.absolutePath}\" ")
+                }
+
+                // 3. Subtitle Inputs
+                multiplexSubtitleUris.forEachIndexed { i, uri ->
+                    val ext = getFileExtension(uri)
+                    val sFile = cacheUriToFile(uri, "mplex_sub_$i.$ext")
+                    inputFiles.add(sFile)
+                    command.append("-i \"${sFile.absolutePath}\" ")
+                }
+
+                // 4. Mapping
+                command.append("-map 0:v ") // Video original
+                // Si agregamos audios, ignoramos el audio original del video (opcional, pero suele ser lo deseado en Multiplex)
+                // O podemos mantenerlo como primera pista. Vamos a mantener el original + los nuevos.
+                command.append("-map 0:a? ") 
+                
+                var currentInputIndex = 1
+                repeat(multiplexAudioUris.size) {
+                    command.append("-map ${currentInputIndex}:a ")
+                    currentInputIndex++
+                }
+                repeat(multiplexSubtitleUris.size) {
+                    command.append("-map ${currentInputIndex}:s ")
+                    currentInputIndex++
+                }
+
+                // 5. Output settings
+                val outputFile = File(requireContext().cacheDir, "mplex_output.mkv")
+                if (outputFile.exists()) outputFile.delete()
+                
+                command.append("-c copy -c:s srt \"${outputFile.absolutePath}\"")
+
+                Log.d("FFmpegMultiplex", "Comando: $command")
+
+                FFmpegKit.executeAsync(command.toString(), { session ->
+                    if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists()) {
+                        val fileName = "Multiplex_${System.currentTimeMillis()}.mkv"
+                        saveToDownloads(outputFile, fileName, "video/x-matroska")
+                    } else {
+                        Log.e("FFmpegMultiplex", session.allLogsAsString)
+                    }
+                    ocultarProgreso()
+                    inputFiles.forEach { it.delete() }
+                    if (outputFile.exists()) outputFile.delete()
+                }, { stats -> actualizarProgreso(stats.time, duration) })
+
+            } catch (e: Exception) {
+                Log.e("FFmpegMultiplex", "Error: ${e.message}")
+                ocultarProgreso()
+            }
+        }.start()
+    }
+
+    private fun startDemuxFlow() {
+        if (videoPlaylist.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
+            videoPickerLauncher.launch("video/*")
+            return
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Demux Video")
+            .setMessage("¿Deseas extraer todas las pistas de audio?")
+            .setPositiveButton("SÍ") { _, _ -> askDemuxSubtitles(true) }
+            .setNegativeButton("NO") { _, _ -> askDemuxSubtitles(false) }
+            .setNeutralButton(R.string.action_cancel, null)
+            .show()
+    }
+
+    private fun askDemuxSubtitles(extractAudio: Boolean) {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Demux Video")
+            .setMessage("¿Deseas extraer todos los subtítulos?")
+            .setPositiveButton("SÍ") { _, _ -> executeDemux(extractAudio, true) }
+            .setNegativeButton("NO") { _, _ -> executeDemux(extractAudio, false) }
+            .show()
+    }
+
+    private fun executeDemux(audio: Boolean, subs: Boolean) {
+        if (!audio && !subs) {
+            Toast.makeText(requireContext(), "No seleccionaste nada para extraer", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val videoUri = videoPlaylist[currentIndex]
+        val duration = getMediaDuration(videoUri)
+        mostrarProgreso(duration)
+
+        Thread {
+            try {
+                val videoFile = cacheUriToFile(videoUri, "demux_input.mp4")
+                val (audioStreams, subStreams) = detectarStreams(videoFile)
+                val originalName = requireContext().contentResolver.query(videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
+                val baseName = originalName.substringBeforeLast(".")
+
+                if (audio) {
+                    if (audioStreams.isEmpty()) {
+                        Log.w("Demux", "No se detectaron streams de audio. Log crudo arriba (tag Demux) para diagnosticar.")
+                        requireActivity().runOnUiThread {
+                            Toast.makeText(requireContext(), "No se encontraron audios (revisa Logcat tag 'Demux' para el detalle)", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    audioStreams.forEach { streamIdx ->
+                        val outName = "${baseName}_track_${streamIdx}.mp3"
+                        val outFile = File(requireContext().cacheDir, outName)
+                        val cmd = "-y -i \"${videoFile.absolutePath}\" -map 0:$streamIdx -c:a libmp3lame -q:a 2 \"${outFile.absolutePath}\""
+                        val extractSession = FFmpegKit.execute(cmd)
+                        if (!ReturnCode.isSuccess(extractSession.returnCode)) {
+                            Log.e("Demux", "Falló extrayendo audio stream $streamIdx: ${extractSession.allLogsAsString}")
+                        }
+                        if (outFile.exists() && outFile.length() > 0) saveToDownloads(outFile, outName, "audio/mpeg")
+                        outFile.delete()
+                    }
+                }
+
+                if (subs) {
+                    if (subStreams.isEmpty()) {
+                        requireActivity().runOnUiThread { Toast.makeText(requireContext(), "No se encontraron subtítulos", Toast.LENGTH_SHORT).show() }
+                    }
+                    subStreams.forEach { streamIdx ->
+                        val outName = "${baseName}_sub_${streamIdx}.srt"
+                        val outFile = File(requireContext().cacheDir, outName)
+                        val cmd = "-y -i \"${videoFile.absolutePath}\" -map 0:$streamIdx \"${outFile.absolutePath}\""
+                        FFmpegKit.execute(cmd)
+                        if (outFile.exists() && outFile.length() > 0) saveToDownloads(outFile, outName, "text/plain")
+                        outFile.delete()
+                    }
+                }
+
+                ocultarProgreso()
+                videoFile.delete()
+            } catch (e: Exception) {
+                Log.e("Demux", "Error: ${e.message}")
+                ocultarProgreso()
+            }
+        }.start()
+    }
+
+    private fun actualizarVisibilidadSelectorPistas() {
+        exoPlayer?.let { player ->
+            val hasMultipleTracks = player.currentTracks.groups.any { group ->
+                group.type == androidx.media3.common.C.TRACK_TYPE_AUDIO || group.type == androidx.media3.common.C.TRACK_TYPE_TEXT
+            }
+            binding.homeContent.btnTrackSelector.visibility = if (hasMultipleTracks) View.VISIBLE else View.GONE
+        }
+    }
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun mostrarSelectorPistas() {
+        val player = exoPlayer ?: return
+        val tracks = player.currentTracks
+        val options = mutableListOf<String>()
+        val trackInfos = mutableListOf<Pair<Int, Int>>() // Pair(GroupIndex, TrackIndex)
+
+        tracks.groups.forEachIndexed { groupIdx, group ->
+            if (group.type == androidx.media3.common.C.TRACK_TYPE_AUDIO) {
+                for (i in 0 until group.length) {
+                    val format = group.getTrackFormat(i)
+                    val label = "Audio: ${format.language ?: "Desconocido"} (${format.label ?: format.bitrate.let { if (it > 0) "${it / 1000}kbps" else "estándar" }})"
+                    options.add(if (group.isTrackSelected(i)) "✓ $label" else label)
+                    trackInfos.add(groupIdx to i)
+                }
+            } else if (group.type == androidx.media3.common.C.TRACK_TYPE_TEXT) {
+                for (i in 0 until group.length) {
+                    val format = group.getTrackFormat(i)
+                    val label = "Sub: ${format.language ?: "Desconocido"} (${format.label ?: "interno"})"
+                    options.add(if (group.isTrackSelected(i)) "✓ $label" else label)
+                    trackInfos.add(groupIdx to i)
+                }
+            }
+        }
+
+        if (options.isEmpty()) {
+            Toast.makeText(requireContext(), "No se encontraron múltiples pistas", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Seleccionar Pista")
+            .setItems(options.toTypedArray()) { _, which ->
+                val (groupIdx, trackIdx) = trackInfos[which]
+                val group = tracks.groups[groupIdx]
+                
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setOverrideForType(androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, trackIdx))
+                    .build()
+            }
+            .setNeutralButton("Desactivar Subtítulos") { _, _ ->
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+                    .build()
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+                    .build()
+            }
+            .show()
+    }
+
     private fun detectarCodecPortada(inputFile: File): String? {
         // FFprobeKit no está disponible en este build (ClassNotFoundException:
         // com.arthenica.ffmpegkit.FFprobeKit) — probablemente el APK no incluye
