@@ -212,12 +212,12 @@ class BatchTagEditorActivity : AppCompatActivity() {
         }
 
         binding.btnApplyPattern.setOnClickListener {
-            val pattern = if (binding.spinnerPatterns.selectedItem == "Custom...") {
-                binding.etPattern.text.toString()
+            val pattern = binding.etPattern.text.toString()
+            if (pattern.isNotBlank() && pattern != "Add Tag...") {
+                viewModel.applyPattern(pattern)
             } else {
-                binding.spinnerPatterns.selectedItem.toString()
+                Toast.makeText(this, "Enter or build a pattern first", Toast.LENGTH_SHORT).show()
             }
-            viewModel.applyPattern(pattern)
         }
 
         binding.btnSortAlpha.setOnClickListener {
@@ -685,13 +685,9 @@ class BatchTagEditorActivity : AppCompatActivity() {
     }
 
     private fun renameFiles() {
-        val pattern = if (binding.spinnerPatterns.selectedItem == "Custom...") {
-            binding.etPattern.text.toString()
-        } else {
-            binding.spinnerPatterns.selectedItem.toString()
-        }
+        val pattern = binding.etPattern.text.toString()
 
-        if (pattern.isEmpty() || pattern == "Custom...") {
+        if (pattern.isEmpty() || pattern == "Add Tag...") {
             Toast.makeText(this, "Select or enter a valid rename pattern", Toast.LENGTH_SHORT).show()
             return
         }
