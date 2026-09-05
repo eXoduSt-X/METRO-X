@@ -5,16 +5,25 @@
 
     <ImageView
         android:id="@+id/ivFrame"
-        android:layout_width="70dp"
+        android:layout_width="100dp"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
         android:background="#222222" />
+
+    <View
+        android:id="@+id/vResizeHandle"
+        android:layout_width="12dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="#6600BFFF"
+        android:visibility="gone" />
 
     <ImageView
         android:id="@+id/btnRemove"
         android:layout_width="20dp"
         android:layout_height="20dp"
         android:layout_gravity="top|end"
+        android:layout_marginEnd="14dp"
         android:padding="4dp"
         android:src="@drawable/ic_close"
         android:background="#80000000"

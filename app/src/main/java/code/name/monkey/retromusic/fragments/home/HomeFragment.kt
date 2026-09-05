@@ -73,6 +73,8 @@ import android.media.MediaFormat
 
 data class Subtitle(val startTime: Long, val endTime: Long, val original: String, val translation: String?)
 
+data class MediaMixItem(val uri: Uri, var durationMs: Long, val isVideo: Boolean)
+
 class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHelper {
 
     private var _binding: FragmentHomeBinding? = null
@@ -110,11 +112,15 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         } ?: generateMultiplexMKV()
     }
 
-    private var combinedMediaUris = mutableListOf<Uri>()
+    private var combinedMediaItems = mutableListOf<MediaMixItem>()
 
     private val combinedPickerLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isNotEmpty()) {
-            combinedMediaUris.addAll(uris)
+            uris.forEach { uri ->
+                val isVideo = getFileExtension(uri).let { it != "jpg" && it != "jpeg" && it != "png" && it != "webp" }
+                val duration = if (isVideo) getMediaDuration(uri) else 3000L
+                combinedMediaItems.add(MediaMixItem(uri, duration, isVideo))
+            }
             updateCombinedFilmstrip()
         }
     }
@@ -124,28 +130,26 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         binding.homeContent.vFilmstripIndicator.visibility = View.GONE
 
         Thread {
-            val frames = combinedMediaUris.mapIndexed { index, uri ->
+            val frames = combinedMediaItems.mapIndexed { index, item ->
                 val retriever = MediaMetadataRetriever()
-                val isVideo = getFileExtension(uri).let { it != "jpg" && it != "jpeg" && it != "png" && it != "webp" }
                 val bitmap = try {
-                    retriever.setDataSource(requireContext(), uri)
+                    retriever.setDataSource(requireContext(), item.uri)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                         retriever.getScaledFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 120, 70)
                     } else {
                         retriever.getFrameAtTime(1000000)
                     }
                 } catch (e: Exception) {
-                    if (!isVideo) {
-                        // Es una imagen, intentar decodificarla
+                    if (!item.isVideo) {
                         try {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                val source = android.graphics.ImageDecoder.createSource(requireContext().contentResolver, uri)
+                                val source = android.graphics.ImageDecoder.createSource(requireContext().contentResolver, item.uri)
                                 android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
                                     decoder.setTargetSize(120, 70)
                                 }
                             } else {
                                 @Suppress("DEPRECATION")
-                                MediaStore.Images.Media.getBitmap(requireContext().contentResolver, uri)
+                                MediaStore.Images.Media.getBitmap(requireContext().contentResolver, item.uri)
                             }
                         } catch (e2: Exception) { null }
                     } else null
@@ -153,8 +157,15 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                     retriever.release()
                 }
 
-                val name = getBetterName(uri).substringBeforeLast(".")
-                VideoFrameAdapter.VideoFrame(index.toLong(), bitmap, name, canRemove = true)
+                val name = getBetterName(item.uri).substringBeforeLast(".")
+                VideoFrameAdapter.VideoFrame(
+                    timestampMs = index.toLong(),
+                    bitmap = bitmap,
+                    timeLabel = name,
+                    canRemove = true,
+                    durationMs = item.durationMs,
+                    canResize = !item.isVideo // Solo permitir estirar fotos por ahora
+                )
             }.toMutableList()
 
             frames.add(VideoFrameAdapter.VideoFrame(0, null, "", isAddButton = true))
@@ -163,53 +174,54 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 filmstripAdapter = VideoFrameAdapter(frames, { /* Preview? */ }, {
                     combinedPickerLauncher.launch("*/*")
                 }, { pos ->
-                    if (pos < combinedMediaUris.size) {
-                        combinedMediaUris.removeAt(pos)
+                    if (pos < combinedMediaItems.size) {
+                        combinedMediaItems.removeAt(pos)
                         updateCombinedFilmstrip()
+                    }
+                }, { pos, newDuration ->
+                    if (pos < combinedMediaItems.size) {
+                        combinedMediaItems[pos].durationMs = newDuration
                     }
                 })
                 binding.homeContent.rvFilmstrip.apply {
                     layoutManager = LinearLayoutManager(requireContext(), RecyclerView.HORIZONTAL, false)
                     adapter = filmstripAdapter
-                    visibility = if (combinedMediaUris.isNotEmpty()) View.VISIBLE else View.GONE
+                    visibility = if (combinedMediaItems.isNotEmpty()) View.VISIBLE else View.GONE
                 }
             }
         }.start()
     }
 
     private fun startCombinedJoin() {
-        if (combinedMediaUris.isEmpty()) return
+        if (combinedMediaItems.isEmpty()) return
         Toast.makeText(requireContext(), "Procesando mezcla de medios...", Toast.LENGTH_LONG).show()
         
-        // Asumimos 720p como base
         val targetW = 1280
         val targetH = 720
-        val totalDurationMs = combinedMediaUris.size * 3000L // Estimación para progreso
+        val totalDurationMs = combinedMediaItems.sumOf { it.durationMs }
         mostrarProgreso(totalDurationMs)
 
         Thread {
             try {
-                val inputFiles = combinedMediaUris.mapIndexed { i, uri ->
-                    cacheUriToFile(uri, "mix_input_$i.${getFileExtension(uri)}")
+                val inputFiles = combinedMediaItems.mapIndexed { i, item ->
+                    cacheUriToFile(item.uri, "mix_input_$i.${getFileExtension(item.uri)}")
                 }
 
                 val filterComplex = StringBuilder()
                 val inputArgs = StringBuilder()
 
                 inputFiles.forEachIndexed { i, file ->
-                    val isVideo = isVideoFile(file)
+                    val item = combinedMediaItems[i]
                     inputArgs.append("-i \"${file.absolutePath}\" ")
                     
-                    if (isVideo) {
-                        // Video: escala, fps, format, audio fix
+                    if (item.isVideo) {
                         filterComplex.append("[$i:v]scale=$targetW:$targetH:force_original_aspect_ratio=decrease,pad=$targetW:$targetH:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v$i];")
                         filterComplex.append("[$i:a]aformat=sample_rates=44100:channel_layouts=stereo[a$i];")
                     } else {
-                        // Foto: loop, t=3, escala, audio silent
-                        // NOTA: Para fotos el loop se maneja mejor re-inyectando la entrada
-                        // Pero aquí usaremos un filtro simple de 3 segundos
-                        filterComplex.append("[$i:v]loop=loop=90:size=1:start=0,scale=$targetW:$targetH:force_original_aspect_ratio=decrease,pad=$targetW:$targetH:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v$i];")
-                        filterComplex.append("anullsrc=r=44100:cl=stereo[a${i}_silence]; [a${i}_silence]atrim=duration=3[a$i];")
+                        val durSec = item.durationMs / 1000.0
+                        // Usar loop con duracion dinamica
+                        filterComplex.append("[$i:v]loop=loop=-1:size=1:start=0,scale=$targetW:$targetH:force_original_aspect_ratio=decrease,pad=$targetW:$targetH:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p,trim=duration=$durSec[v$i];")
+                        filterComplex.append("anullsrc=r=44100:cl=stereo[a${i}_silence]; [a${i}_silence]atrim=duration=$durSec[a$i];")
                     }
                 }
 
@@ -233,7 +245,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                     ocultarProgreso()
                     inputFiles.forEach { it.delete() }
                     filterFile.delete()
-                    combinedMediaUris.clear()
+                    combinedMediaItems.clear()
                     requireActivity().runOnUiThread { updateCombinedFilmstrip() }
                 }, { stats -> actualizarProgreso(stats.time, totalDurationMs) })
 
@@ -1109,7 +1121,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         when (id) {
             "folder" -> folderPickerLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
             "mix" -> {
-                if (combinedMediaUris.isEmpty()) {
+                if (combinedMediaItems.isEmpty()) {
                     combinedPickerLauncher.launch("*/*")
                 } else {
                     startCombinedJoin()
