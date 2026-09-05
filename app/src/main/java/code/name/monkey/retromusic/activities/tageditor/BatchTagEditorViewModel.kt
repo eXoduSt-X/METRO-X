@@ -12,11 +12,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Stack
 
 class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService) : ViewModel() {
 
     private val _songs = MutableLiveData<List<BatchSongItem>>(emptyList())
     val songs: LiveData<List<BatchSongItem>> = _songs
+
+    // Historial para deshacer cambios (Undo)
+    private val history = Stack<List<BatchSongItem>>()
 
     private val _mbTracks = MutableLiveData<List<code.name.monkey.retromusic.network.MBTrack>>(emptyList())
     val mbTracks: LiveData<List<code.name.monkey.retromusic.network.MBTrack>> = _mbTracks
@@ -34,6 +38,21 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
 
     fun setSongs(newSongs: List<BatchSongItem>) {
         _songs.value = newSongs
+        history.clear() // Al cargar carpeta nueva, limpiamos historial
+    }
+
+    private fun saveToHistory() {
+        val current = _songs.value ?: return
+        // Deep copy de la lista y los ítems para que el historial sea independiente
+        val snapshot = current.map { it.copy(pendingTags = it.pendingTags?.copy()) }
+        history.push(snapshot)
+        if (history.size > 10) history.removeAt(0) // Limitar a 10 pasos
+    }
+
+    fun undo() {
+        if (history.isNotEmpty()) {
+            _songs.value = history.pop()
+        }
     }
 
     fun setAllSelected(selected: Boolean) {
@@ -43,6 +62,7 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
     }
 
     fun batchApplyManualTags(manualTags: TagFields) {
+        saveToHistory()
         val currentSongs = _songs.value?.toMutableList() ?: return
         currentSongs.forEach { item ->
             if (item.isSelected && !item.isPlaceholder) {
@@ -59,6 +79,7 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
     }
 
     fun updateSingleItemTags(index: Int, newTags: TagFields) {
+        saveToHistory()
         val currentSongs = _songs.value?.toMutableList() ?: return
         if (index in currentSongs.indices) {
             currentSongs[index].pendingTags = newTags
@@ -67,6 +88,7 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
     }
 
     fun applyPattern(pattern: String) {
+        saveToHistory()
         val currentList = _songs.value ?: return
         currentList.forEach { item ->
             if (item.isPlaceholder || item.document == null) return@forEach
@@ -76,12 +98,14 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
     }
 
     fun sortAlphabetically() {
+        saveToHistory()
         val currentList = _songs.value?.toMutableList() ?: return
         currentList.sortBy { it.document?.name ?: "" }
         _songs.value = currentList
     }
 
     fun clearPendingTags() {
+        saveToHistory()
         val currentList = _songs.value?.toMutableList() ?: return
         // Clear también elimina los huecos vacíos añadidos con "+"
         val filtered = currentList.filterNot { it.isPlaceholder }
@@ -95,6 +119,7 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
      * metadata del álbum, para no desalinear el resto del orden.
      */
     fun addPlaceholder() {
+        saveToHistory()
         val currentList = _songs.value?.toMutableList() ?: mutableListOf()
         currentList.add(
             BatchSongItem(
@@ -113,6 +138,7 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
      * Padding automático: "01".."09" con 2 dígitos, pasa a 3 dígitos si hay 100+ canciones.
      */
     fun numberTracksSequentially() {
+        saveToHistory()
         val currentList = _songs.value?.toMutableList() ?: return
         val padding = maxOf(2, currentList.size.toString().length)
         currentList.forEachIndexed { index, item ->
@@ -186,6 +212,7 @@ class BatchTagEditorViewModel(private val musicBrainzService: MusicBrainzService
     }
 
     fun applyMetadataToCurrentOrder() {
+        saveToHistory()
         val currentSongs = _songs.value?.toMutableList() ?: return
         val metadata = _mbTracks.value ?: return
 

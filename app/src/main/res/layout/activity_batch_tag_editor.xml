@@ -390,6 +390,17 @@
             android:layout_marginStart="4dp" />
 
         <Button
+            android:id="@+id/btnUndo"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="UNDO"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp"
+            android:backgroundTint="#444444"
+            android:layout_marginStart="4dp" />
+
+        <Button
             android:id="@+id/btnClearTags"
             android:layout_width="0dp"
             android:layout_height="48dp"

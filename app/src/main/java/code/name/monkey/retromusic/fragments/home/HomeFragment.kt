@@ -110,6 +110,140 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         } ?: generateMultiplexMKV()
     }
 
+    private var combinedMediaUris = mutableListOf<Uri>()
+
+    private val combinedPickerLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isNotEmpty()) {
+            combinedMediaUris.addAll(uris)
+            updateCombinedFilmstrip()
+        }
+    }
+
+    private fun updateCombinedFilmstrip() {
+        binding.homeContent.hsvFilmstrip.visibility = View.GONE
+        binding.homeContent.vFilmstripIndicator.visibility = View.GONE
+
+        Thread {
+            val frames = combinedMediaUris.mapIndexed { index, uri ->
+                val retriever = MediaMetadataRetriever()
+                val isVideo = getFileExtension(uri).let { it != "jpg" && it != "jpeg" && it != "png" && it != "webp" }
+                val bitmap = try {
+                    retriever.setDataSource(requireContext(), uri)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                        retriever.getScaledFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 120, 70)
+                    } else {
+                        retriever.getFrameAtTime(1000000)
+                    }
+                } catch (e: Exception) {
+                    if (!isVideo) {
+                        // Es una imagen, intentar decodificarla
+                        try {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                val source = android.graphics.ImageDecoder.createSource(requireContext().contentResolver, uri)
+                                android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                                    decoder.setTargetSize(120, 70)
+                                }
+                            } else {
+                                @Suppress("DEPRECATION")
+                                MediaStore.Images.Media.getBitmap(requireContext().contentResolver, uri)
+                            }
+                        } catch (e2: Exception) { null }
+                    } else null
+                } finally {
+                    retriever.release()
+                }
+
+                val name = getBetterName(uri).substringBeforeLast(".")
+                VideoFrameAdapter.VideoFrame(index.toLong(), bitmap, name, canRemove = true)
+            }.toMutableList()
+
+            frames.add(VideoFrameAdapter.VideoFrame(0, null, "", isAddButton = true))
+
+            requireActivity().runOnUiThread {
+                filmstripAdapter = VideoFrameAdapter(frames, { /* Preview? */ }, {
+                    combinedPickerLauncher.launch("*/*")
+                }, { pos ->
+                    if (pos < combinedMediaUris.size) {
+                        combinedMediaUris.removeAt(pos)
+                        updateCombinedFilmstrip()
+                    }
+                })
+                binding.homeContent.rvFilmstrip.apply {
+                    layoutManager = LinearLayoutManager(requireContext(), RecyclerView.HORIZONTAL, false)
+                    adapter = filmstripAdapter
+                    visibility = if (combinedMediaUris.isNotEmpty()) View.VISIBLE else View.GONE
+                }
+            }
+        }.start()
+    }
+
+    private fun startCombinedJoin() {
+        if (combinedMediaUris.isEmpty()) return
+        Toast.makeText(requireContext(), "Procesando mezcla de medios...", Toast.LENGTH_LONG).show()
+        
+        // Asumimos 720p como base
+        val targetW = 1280
+        val targetH = 720
+        val totalDurationMs = combinedMediaUris.size * 3000L // Estimación para progreso
+        mostrarProgreso(totalDurationMs)
+
+        Thread {
+            try {
+                val inputFiles = combinedMediaUris.mapIndexed { i, uri ->
+                    cacheUriToFile(uri, "mix_input_$i.${getFileExtension(uri)}")
+                }
+
+                val filterComplex = StringBuilder()
+                val inputArgs = StringBuilder()
+
+                inputFiles.forEachIndexed { i, file ->
+                    val isVideo = isVideoFile(file)
+                    inputArgs.append("-i \"${file.absolutePath}\" ")
+                    
+                    if (isVideo) {
+                        // Video: escala, fps, format, audio fix
+                        filterComplex.append("[$i:v]scale=$targetW:$targetH:force_original_aspect_ratio=decrease,pad=$targetW:$targetH:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v$i];")
+                        filterComplex.append("[$i:a]aformat=sample_rates=44100:channel_layouts=stereo[a$i];")
+                    } else {
+                        // Foto: loop, t=3, escala, audio silent
+                        // NOTA: Para fotos el loop se maneja mejor re-inyectando la entrada
+                        // Pero aquí usaremos un filtro simple de 3 segundos
+                        filterComplex.append("[$i:v]loop=loop=90:size=1:start=0,scale=$targetW:$targetH:force_original_aspect_ratio=decrease,pad=$targetW:$targetH:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v$i];")
+                        filterComplex.append("anullsrc=r=44100:cl=stereo[a${i}_silence]; [a${i}_silence]atrim=duration=3[a$i];")
+                    }
+                }
+
+                for (i in inputFiles.indices) {
+                    filterComplex.append("[v$i][a$i]")
+                }
+                filterComplex.append("concat=n=${inputFiles.size}:v=1:a=1[outv][outa]")
+
+                val outputFile = File(requireContext().cacheDir, "mix_output.mp4")
+                if (outputFile.exists()) outputFile.delete()
+
+                val filterFile = File(requireContext().cacheDir, "mix_filter.txt").apply { writeText(filterComplex.toString()) }
+                val command = "-y $inputArgs -filter_complex_script \"${filterFile.absolutePath}\" -map \"[outv]\" -map \"[outa]\" -c:v h264_mediacodec -b:v 3M -c:a aac -b:a 128k \"${outputFile.absolutePath}\""
+
+                FFmpegKit.executeAsync(command, { session ->
+                    if (ReturnCode.isSuccess(session.returnCode)) {
+                        saveToDownloads(outputFile, "Mix_${System.currentTimeMillis()}.mp4")
+                    } else {
+                        Log.e("FFmpegMix", session.allLogsAsString)
+                    }
+                    ocultarProgreso()
+                    inputFiles.forEach { it.delete() }
+                    filterFile.delete()
+                    combinedMediaUris.clear()
+                    requireActivity().runOnUiThread { updateCombinedFilmstrip() }
+                }, { stats -> actualizarProgreso(stats.time, totalDurationMs) })
+
+            } catch (e: Exception) {
+                Log.e("FFmpegMix", "Error: ${e.message}")
+                ocultarProgreso()
+            }
+        }.start()
+    }
+
     private var workshopSubtitleIndex = -1
 
     private var isFullscreen = false
@@ -934,7 +1068,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         
 
         binding.homeContent.btnMergeVideos.setOnClickListener {
-            if (mergeVideosUris.isEmpty()) mergePickerLauncher.launch("video/*") else unirVideos(mergeVideosUris)
+            startCombinedJoin()
         }
   
         binding.homeContent.btnYoutubeDownload.setOnClickListener {
@@ -952,9 +1086,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     private fun setupToolStrip() {
         val tools = listOf(
             ToolButtonItem("folder", R.drawable.ic_vfolder, "Carpeta"),
-            ToolButtonItem("video", R.drawable.ic_vid, "Video"),
+            ToolButtonItem("mix", R.drawable.ic_vid, "MIX"),
             ToolButtonItem("gif", R.drawable.ic_gif, "GIF"),
-            ToolButtonItem("slideshow", R.drawable.ic_slide, "Slideshow"),
             ToolButtonItem("tageditor", R.drawable.ic_dashboard, "Mp3Tag"),
             ToolButtonItem("tomp3", R.drawable.ic_mp3, "A MP3"),
             ToolButtonItem("subs", R.drawable.ic_srt, "Subs"),
@@ -975,7 +1108,13 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     private fun handleToolClick(id: String) {
         when (id) {
             "folder" -> folderPickerLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
-            "video" -> videoPickerLauncher.launch("video/*")
+            "mix" -> {
+                if (combinedMediaUris.isEmpty()) {
+                    combinedPickerLauncher.launch("*/*")
+                } else {
+                    startCombinedJoin()
+                }
+            }
             "gif" -> {
                 if (videoPlaylist.isNotEmpty()) convertirVideoAGif(videoPlaylist[currentIndex])
                 else Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()

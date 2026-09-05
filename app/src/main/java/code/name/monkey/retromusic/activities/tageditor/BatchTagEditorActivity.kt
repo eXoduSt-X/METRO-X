@@ -228,6 +228,10 @@ class BatchTagEditorActivity : AppCompatActivity() {
             viewModel.clearPendingTags()
         }
 
+        binding.btnUndo.setOnClickListener {
+            viewModel.undo()
+        }
+
         binding.btnSaveAll.setOnClickListener {
             saveChanges()
         }
