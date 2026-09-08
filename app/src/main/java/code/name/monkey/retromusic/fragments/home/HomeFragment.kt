@@ -21,6 +21,8 @@ import android.provider.OpenableColumns
 import android.util.Log
 import android.view.*
 import android.widget.Button
+import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -111,6 +113,19 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             askForAnotherSubtitle()
         } ?: generateMultiplexMKV()
     }
+
+    private val productionAudioPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            tempProductionAudioUri = it
+            askForSubtitlesStep(videoPlaylist[currentIndex], it)
+        }
+    }
+
+    private val productionSubPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { executeFinalProduction(videoPlaylist[currentIndex], tempProductionAudioUri, it) }
+    }
+
+    private var tempProductionAudioUri: Uri? = null
 
     private var combinedMediaItems = mutableListOf<MediaMixItem>()
 
@@ -925,10 +940,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
         setFixedIcon(binding.homeContent.btnPrevVideo, R.drawable.ic_skip_previous)
         setFixedIcon(binding.homeContent.btnNextVideo, R.drawable.ic_skip_next)
-        setFixedIcon(binding.homeContent.btnMergeVideos, R.drawable.ic_unir)
-        setFixedIcon(binding.homeContent.btnSplit, R.drawable.ic_cut)
+        binding.homeContent.btnMergeVideos.visibility = View.GONE
+        binding.homeContent.cutRow.visibility = View.GONE
         setFixedIcon(binding.homeContent.btnYoutubeDownload, R.drawable.ic_youtube, 130, 29)
-        setFixedIcon(binding.homeContent.btnApplyFade, R.drawable.ic_fade)
         setPlayPauseIcon(false)
 
         fullscreenGestureDetector = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
@@ -1061,24 +1075,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }
 
         
-        binding.homeContent.btnSetStart.setOnClickListener {
-            exoPlayer?.let { binding.homeContent.etStartTime.setText(formatTime(it.currentPosition.toInt())) }
-        }
-        binding.homeContent.btnSetEnd.setOnClickListener {
-            exoPlayer?.let { binding.homeContent.etEndTime.setText(formatTime(it.currentPosition.toInt())) }
-        }
-        binding.homeContent.btnSplit.setOnClickListener {
-            val startTime = binding.homeContent.etStartTime.text.toString()
-            val endTime = binding.homeContent.etEndTime.text.toString()
-            if (startTime.isNotEmpty() && endTime.isNotEmpty() && videoPlaylist.isNotEmpty()) {
-                splitVideo(videoPlaylist[currentIndex], startTime, endTime)
-            } else {
-                Toast.makeText(requireContext(), "Define los tiempos de corte", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        
-
         binding.homeContent.btnMergeVideos.setOnClickListener {
             startCombinedJoin()
         }
@@ -1086,8 +1082,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         binding.homeContent.btnYoutubeDownload.setOnClickListener {
             findNavController().navigate(R.id.youtube_downloader_fragment)
         }
-
-        binding.homeContent.btnApplyFade.setOnClickListener { aplicarFadeCombinado() }
 
         binding.homeContent.btnTrackSelector.setOnClickListener { mostrarSelectorPistas() }
 
@@ -1099,15 +1093,19 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         val tools = listOf(
             ToolButtonItem("folder", R.drawable.ic_vfolder, "Carpeta"),
             ToolButtonItem("mix", R.drawable.ic_vid, "MIX"),
+            ToolButtonItem("merge", R.drawable.ic_unir, "Unir Videos"),
+            ToolButtonItem("split", R.drawable.ic_cut, "Cortar"),
+            ToolButtonItem("fade", R.drawable.ic_fade, "Fade"),
             ToolButtonItem("gif", R.drawable.ic_gif, "GIF"),
             ToolButtonItem("tageditor", R.drawable.ic_dashboard, "Mp3Tag"),
             ToolButtonItem("tomp3", R.drawable.ic_mp3, "A MP3"),
             ToolButtonItem("subs", R.drawable.ic_srt, "Subs"),
-            ToolButtonItem("demux", R.drawable.ic_restore, "Demux"),
             ToolButtonItem("ass", R.drawable.ic_ass, "ASS"),
             ToolButtonItem("workshop", R.drawable.ic_edit, "Workshop"),
+            ToolButtonItem("demux", R.drawable.ic_restore, "Demux"),
             ToolButtonItem("remux", R.drawable.ic_replace, "Remux"),
-            ToolButtonItem("multiplex", R.drawable.ic_mkv, "Multiplex")
+            ToolButtonItem("multiplex", R.drawable.ic_mkv, "Multiplex"),
+            ToolButtonItem("production", R.drawable.ic_metrox_new, "Producir")
         )
 
         binding.homeContent.rvToolStrip.apply {
@@ -1122,11 +1120,32 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             "folder" -> folderPickerLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
             "mix" -> {
                 if (combinedMediaItems.isEmpty()) {
-                    combinedPickerLauncher.launch("*/*")
+                    AlertDialog.Builder(requireContext())
+                        .setTitle("Creador de Secuencias (MIX)")
+                        .setMessage("Con esta herramienta puedes:\n\n" +
+                                "• Unir varios vídeos en uno solo.\n" +
+                                "• Crear pases de diapositivas con fotos.\n" +
+                                "• Mezclar fotos y vídeos en la misma línea de tiempo.\n" +
+                                "• Ajustar cuánto tiempo se muestra cada foto.\n\n" +
+                                "Todo se unificará a HD (720p). Si quieres añadir música de fondo o subtítulos a tu mezcla, usa 'Multiplex' una vez termines el vídeo aquí.")
+                        .setPositiveButton("Seleccionar Medios") { _, _ ->
+                            combinedPickerLauncher.launch("*/*")
+                        }
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .show()
                 } else {
                     startCombinedJoin()
                 }
             }
+            "merge" -> {
+                if (mergeVideosUris.isEmpty()) {
+                    mergePickerLauncher.launch("video/*")
+                } else {
+                    mostrarDialogoUnirVideos(mergeVideosUris)
+                }
+            }
+            "split" -> mostrarDialogoCortar()
+            "fade" -> mostrarDialogoFade()
             "gif" -> {
                 if (videoPlaylist.isNotEmpty()) convertirVideoAGif(videoPlaylist[currentIndex])
                 else Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
@@ -1172,6 +1191,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 }
                 startMultiplexFlow()
             }
+            "production" -> startProductionFlow()
         }
     }
 
@@ -1421,16 +1441,174 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         return String.format(Locale.getDefault(), "%02d:%02d:%02d,%03d", hours, minutes, seconds, ms)
     }
 
-    private fun aplicarFadeCombinado() {
+    private data class CutRange(val start: String, val end: String)
+
+    private fun mostrarDialogoCortar() {
         if (videoPlaylist.isEmpty()) {
             Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
             return
         }
-        val fadeInSec = binding.homeContent.etFadeInDuration.text.toString().toDoubleOrNull() ?: 0.0
-        val fadeOutSec = binding.homeContent.etFadeOutDuration.text.toString().toDoubleOrNull() ?: 0.0
 
+        val inflater = LayoutInflater.from(requireContext())
+        val inputView = inflater.inflate(R.layout.dialog_split_video, null)
+        val etStart = inputView.findViewById<EditText>(R.id.etStartTime)
+        val etEnd = inputView.findViewById<EditText>(R.id.etEndTime)
+        val btnSetStart = inputView.findViewById<ImageButton>(R.id.btnSetStart)
+        val btnSetEnd = inputView.findViewById<ImageButton>(R.id.btnSetEnd)
+
+        btnSetStart.setOnClickListener { exoPlayer?.let { etStart.setText(formatTime(it.currentPosition.toInt())) } }
+        btnSetEnd.setOnClickListener { exoPlayer?.let { etEnd.setText(formatTime(it.currentPosition.toInt())) } }
+
+        val rangesList = mutableListOf<CutRange>()
+        val recyclerView = RecyclerView(requireContext()).apply {
+            layoutManager = LinearLayoutManager(requireContext())
+            setPadding(0, 12, 0, 12)
+            clipToPadding = false
+        }
+
+        lateinit var adapter: CutRangeAdapter
+        adapter = CutRangeAdapter(rangesList) { pos ->
+            rangesList.removeAt(pos)
+            adapter.notifyItemRemoved(pos)
+        }
+        recyclerView.adapter = adapter
+
+        val btnAdd = Button(requireContext()).apply {
+            text = "AGREGAR A LA LISTA"
+            setOnClickListener {
+                val start = etStart.text.toString().trim()
+                val end = etEnd.text.toString().trim()
+                if (start.isEmpty() || end.isEmpty()) {
+                    Toast.makeText(requireContext(), "Definí inicio y fin antes de agregar", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                rangesList.add(CutRange(start, end))
+                adapter.notifyItemInserted(rangesList.size - 1)
+                etStart.setText("")
+                etEnd.setText("")
+            }
+        }
+
+        val container = android.widget.LinearLayout(requireContext()).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+            addView(inputView)
+            addView(btnAdd)
+            addView(recyclerView)
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Cortar Video en Varias Partes")
+            .setView(container)
+            .setPositiveButton("CORTAR TODO") { _, _ ->
+                if (rangesList.isEmpty()) {
+                    Toast.makeText(requireContext(), "No agregaste ningún corte a la lista", Toast.LENGTH_SHORT).show()
+                } else {
+                    splitVideoMultiple(videoPlaylist[currentIndex], rangesList.toList())
+                }
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
+    }
+
+    private inner class CutRangeAdapter(
+        private val items: List<CutRange>,
+        private val onRemove: (Int) -> Unit
+    ) : RecyclerView.Adapter<CutRangeAdapter.ViewHolder>() {
+        inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) {
+            val tvName: TextView = v.findViewById(R.id.tvFilename)
+            val tvDetails: TextView = v.findViewById(R.id.tvDetails)
+        }
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            ViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_batch_song, parent, false))
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            val item = items[position]
+            holder.tvName.text = "Corte ${position + 1} (tocar para quitar)"
+            holder.tvDetails.text = "${item.start}  →  ${item.end}"
+            holder.itemView.setOnClickListener { onRemove(holder.bindingAdapterPosition) }
+        }
+        override fun getItemCount() = items.size
+    }
+    private fun splitVideoMultiple(videoUri: Uri, ranges: List<CutRange>) {
+        Toast.makeText(requireContext(), "Cortando ${ranges.size} clips...", Toast.LENGTH_LONG).show()
+
+        val totalDuration = ranges.sumOf {
+            try {
+                (parseTimeToMillis(it.end) - parseTimeToMillis(it.start)).coerceAtLeast(0)
+            } catch (e: Exception) { 0L }
+        }
+        mostrarProgreso(totalDuration)
+
+        Thread {
+            val videoFile = cacheUriToFile(videoUri, "input_split_multi.mp4")
+            val originalName = requireContext().contentResolver.query(videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
+            val baseName = originalName.substringBeforeLast(".")
+
+            var exitosos = 0
+            var fallidos = 0
+            var elapsedBeforeCurrent = 0L
+
+            ranges.forEachIndexed { index, range ->
+                val fileName = "${baseName}_parte${index + 1}.mp4"
+                val outputFile = File(requireContext().cacheDir, "output_split_multi_$index.mp4")
+                if (outputFile.exists()) outputFile.delete()
+
+                val rangeDuration = try {
+                    (parseTimeToMillis(range.end) - parseTimeToMillis(range.start)).coerceAtLeast(0)
+                } catch (e: Exception) { 0L }
+
+                val command = "-y -i \"${videoFile.absolutePath}\" -ss ${range.start} -to ${range.end} -c copy \"${outputFile.absolutePath}\""
+
+                val capturedElapsed = elapsedBeforeCurrent
+                val session = FFmpegKit.execute(command) { stats ->
+                    actualizarProgreso((capturedElapsed + stats.time).toDouble(), totalDuration)
+                }
+
+                if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
+                    saveToDownloads(outputFile, fileName)
+                    exitosos++
+                } else {
+                    Log.e("FFmpegSplitMulti", "Falló corte ${index + 1} (${range.start}-${range.end}): ${session.allLogsAsString}")
+                    fallidos++
+                }
+                outputFile.delete()
+                elapsedBeforeCurrent += rangeDuration
+            }
+
+            videoFile.delete()
+            ocultarProgreso()
+            requireActivity().runOnUiThread {
+                Toast.makeText(requireContext(), "Cortes: $exitosos ok, $fallidos fallidos", Toast.LENGTH_LONG).show()
+            }
+        }.start()
+    }
+    private fun mostrarDialogoFade() {
+        if (videoPlaylist.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val view = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_fade_video, null)
+        val etIn = view.findViewById<EditText>(R.id.etFadeIn)
+        val etOut = view.findViewById<EditText>(R.id.etFadeOut)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Aplicar Efecto Fade")
+            .setView(view)
+            .setPositiveButton("APLICAR") { _, _ ->
+                val fadeIn = etIn.text.toString().toDoubleOrNull() ?: 0.0
+                val fadeOut = etOut.text.toString().toDoubleOrNull() ?: 0.0
+                aplicarFadeCombinado(fadeIn, fadeOut)
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
+    }
+
+    private fun aplicarFadeCombinado(fadeInSec: Double, fadeOutSec: Double) {
         if (fadeInSec <= 0.0 && fadeOutSec <= 0.0) {
-            Toast.makeText(requireContext(), "Define al menos un tiempo de fade in o fade out", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Define al menos un tiempo de fade", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -1439,7 +1617,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         val totalDurationSec = totalDurationMs / 1000.0
 
         if (fadeInSec + fadeOutSec > totalDurationSec) {
-            Toast.makeText(requireContext(), "La suma de fade in + fade out es mayor que la duración del video", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "La suma de fades supera la duración del video", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -1455,7 +1633,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
             val fileName = "${originalName.substringBeforeLast(".")}_fade.mp4"
 
-            // Una sola pasada: fade in y fade out en el mismo filtergraph, video y audio juntos.
             val videoFilters = mutableListOf<String>()
             val audioFilters = mutableListOf<String>()
 
@@ -1469,8 +1646,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 audioFilters.add("afade=t=out:st=$fadeOutStart:d=$fadeOutSec")
             }
 
-            // "null"/"anull" son los filtros de paso directo (no confundir con -c copy,
-            // que es un flag de codec y no existe dentro de un filtergraph).
             val vChain = if (videoFilters.isNotEmpty()) "[0:v]${videoFilters.joinToString(",")}[v]" else "[0:v]null[v]"
             val aChain = if (audioFilters.isNotEmpty()) "[0:a]${audioFilters.joinToString(",")}[a]" else "[0:a]anull[a]"
             val filterComplex = "$vChain;$aChain"
@@ -2247,6 +2422,126 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }.start()
     }
 
+    private fun startProductionFlow() {
+        if (videoPlaylist.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val videoUri = videoPlaylist[currentIndex]
+        
+        // Asistente Paso 1: Audio
+        val audioOptions = arrayOf("Mantener audio original", "Elegir música/audio externo", "Silenciar video")
+        AlertDialog.Builder(requireContext())
+            .setTitle("Producción Final - Paso 1: Audio")
+            .setItems(audioOptions) { _, which ->
+                when (which) {
+                    0 -> askForSubtitlesStep(videoUri, null) // Original
+                    1 -> {
+                        // Lanzar picker y continuar en el callback
+                        productionAudioPickerLauncher.launch("audio/*")
+                    }
+                    2 -> askForSubtitlesStep(videoUri, Uri.parse("silence")) // Silencio
+                }
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
+    }
+    private fun askForSubtitlesStep(videoUri: Uri, audioUri: Uri?) {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Producción Final - Paso 2: Subtítulos")
+            .setMessage("¿Deseas incrustar (quemar) subtítulos en el video final?")
+            .setPositiveButton("SÍ") { _, _ ->
+                productionSubPickerLauncher.launch("*/*")
+            }
+            .setNegativeButton("NO") { _, _ ->
+                executeFinalProduction(videoUri, audioUri, null)
+            }
+            .show()
+    }
+
+    private fun executeFinalProduction(videoUri: Uri, audioUri: Uri?, subtitleUri: Uri?) {
+        Toast.makeText(requireContext(), "Generando producción final...", Toast.LENGTH_LONG).show()
+        val duration = getMediaDuration(videoUri)
+        mostrarProgreso(duration)
+
+        Thread {
+            try {
+                val originalName = requireContext().contentResolver.query(
+                    videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+                )?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
+                val baseName = originalName.substringBeforeLast(".")
+                val fileName = "${baseName}_Produccion.mp4"
+
+                val videoFile = cacheUriToFile(videoUri, "prod_video.mp4")
+
+                val isSilence = audioUri != null && audioUri.toString() == "silence"
+                val audioFile = if (audioUri != null && !isSilence) {
+                    cacheUriToFile(audioUri, "prod_audio.tmp")
+                } else null
+
+                val subFile = subtitleUri?.let {
+                    val ext = getFileExtension(it).ifBlank { "srt" }
+                    cacheUriToFile(it, "prod_sub.$ext")
+                }
+
+                val outputFile = File(requireContext().cacheDir, "prod_output.mp4")
+                if (outputFile.exists()) outputFile.delete()
+
+                val command = StringBuilder("-y -i \"${videoFile.absolutePath}\" ")
+                if (audioFile != null) {
+                    command.append("-i \"${audioFile.absolutePath}\" ")
+                }
+
+                // Filtro de video: solo si hay subtítulos para quemar
+                val vFilter = subFile?.let {
+                    val escapedPath = it.absolutePath.replace(":", "\\:")
+                    "subtitles=$escapedPath:fontsdir=${getFontDir().absolutePath}"
+                }
+                if (vFilter != null) {
+                    command.append("-vf \"$vFilter\" ")
+                }
+
+                // Mapeo y códec de audio según el caso
+                when {
+                    isSilence -> command.append("-map 0:v -an ")
+                    audioFile != null -> command.append("-map 0:v -map 1:a -c:a aac -shortest ")
+                    else -> command.append("-map 0:v -map 0:a? -c:a copy ")
+                }
+
+                // Códec de video: si quemamos subs hay que reencodear, si no, copiar
+                if (vFilter != null) {
+                    command.append("-c:v h264_mediacodec -b:v 2M ")
+                } else {
+                    command.append("-c:v copy ")
+                }
+
+                command.append("\"${outputFile.absolutePath}\"")
+
+                Log.d("FFmpegProduction", "Comando: $command")
+
+                FFmpegKit.executeAsync(command.toString(), { session ->
+                    if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
+                        saveToDownloads(outputFile, fileName)
+                    } else {
+                        Log.e("FFmpegProduction", session.allLogsAsString)
+                        requireActivity().runOnUiThread {
+                            Toast.makeText(requireContext(), "Error al generar la producción final", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    ocultarProgreso()
+                    videoFile.delete()
+                    audioFile?.delete()
+                    subFile?.delete()
+                    if (outputFile.exists()) outputFile.delete()
+                }, { stats -> actualizarProgreso(stats.time, duration) })
+
+            } catch (e: Exception) {
+                Log.e("FFmpegProduction", "Error: ${e.message}")
+                ocultarProgreso()
+            }
+        }.start()
+    }
     private fun startDemuxFlow() {
         if (videoPlaylist.isEmpty()) {
             Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
