@@ -137,6 +137,18 @@
                 android:visibility="gone" />
         </FrameLayout>
 
+        <Button
+            android:id="@+id/btnStampMark"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="#FF4500"
+            android:textColor="#FFFFFF"
+            android:text="SIGUIENTE FOTO"
+            android:visibility="gone"
+            android:drawableStart="@drawable/ic_dashboard"
+            android:paddingHorizontal="16dp" />
+
         <SeekBar
             android:id="@+id/videoSeekBar"
             android:layout_width="match_parent"

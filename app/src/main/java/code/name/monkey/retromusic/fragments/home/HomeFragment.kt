@@ -97,6 +97,11 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     private var selectedAudioUri: Uri? = null
     private var selectedAudioUris = mutableListOf<Uri>()
 
+    private var slideshowAudioUri: Uri? = null
+    private val slideshowStampTimestamps = mutableListOf<Long>() // boundaries marcadas por el usuario (ms)
+    private val slideshowImageDurations = mutableListOf<Long>()  // duración calculada por imagen (ms)
+    private var isStampingMode = false
+
     private val multiplexAudioUris = mutableListOf<Uri>()
     private val multiplexSubtitleUris = mutableListOf<Uri>()
 
@@ -112,6 +117,13 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             multiplexSubtitleUris.add(it)
             askForAnotherSubtitle()
         } ?: generateMultiplexMKV()
+    }
+
+    private val slideshowAudioPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            slideshowAudioUri = it
+            Toast.makeText(requireContext(), "Audio de referencia cargado. Tocá de nuevo para iniciar el marcado.", Toast.LENGTH_LONG).show()
+        }
     }
 
     private val productionAudioPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -1105,6 +1117,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             ToolButtonItem("demux", R.drawable.ic_restore, "Demux"),
             ToolButtonItem("remux", R.drawable.ic_replace, "Remux"),
             ToolButtonItem("multiplex", R.drawable.ic_mkv, "Multiplex"),
+            ToolButtonItem("stampsync", R.drawable.ic_metrox_new, "Sync Fotos"),
             ToolButtonItem("production", R.drawable.ic_metrox_new, "Producir")
         )
 
@@ -1152,7 +1165,23 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             }
             "slideshow" -> {
                 if (slideshowImages.isEmpty()) photosPickerLauncher.launch("image/*")
-                else crearVideoDesdeFotos(slideshowImages)
+                else crearVideoDesdeFotos(
+                    slideshowImages,
+                    slideshowImageDurations.takeIf { it.size == slideshowImages.size },
+                    slideshowAudioUri
+                )
+            }
+            "stampsync" -> {
+                when {
+                    slideshowImages.isEmpty() -> photosPickerLauncher.launch("image/*")
+                    slideshowAudioUri == null -> slideshowAudioPickerLauncher.launch("audio/*")
+                    slideshowImageDurations.isNotEmpty() -> crearVideoDesdeFotos(
+                        slideshowImages,
+                        slideshowImageDurations,
+                        slideshowAudioUri
+                    )
+                    else -> startStampingSession()
+                }
             }
             "tageditor" -> startActivity(
                 Intent(requireContext(), code.name.monkey.retromusic.activities.tageditor.BatchTagEditorActivity::class.java)
@@ -1934,24 +1963,26 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     }
 
     private fun generateWaveform(uri: Uri, widthPx: Int) {
-        val videoFile = cacheUriToFile(uri, "input_waveform.mp4")
-        val outputFile = File(requireContext().cacheDir, "waveform.png")
-        if (outputFile.exists()) outputFile.delete()
+        Thread {
+            val videoFile = cacheUriToFile(uri, "input_waveform.mp4")
+            val outputFile = File(requireContext().cacheDir, "waveform.png")
+            if (outputFile.exists()) outputFile.delete()
 
-        // Comando FFmpeg para generar una imagen del espectro de audio
-        val command = "-y -i \"${videoFile.absolutePath}\" -filter_complex \"aformat=channel_layouts=mono,showwavespic=s=${widthPx}x80:colors=#00BFFF\" -frames:v 1 \"${outputFile.absolutePath}\""
+            // Comando FFmpeg para generar una imagen del espectro de audio
+            val command = "-y -i \"${videoFile.absolutePath}\" -filter_complex \"aformat=channel_layouts=mono,showwavespic=s=${widthPx}x80:colors=#00BFFF\" -frames:v 1 \"${outputFile.absolutePath}\""
 
-        FFmpegKit.executeAsync(command, { session ->
-            if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists()) {
-                val bitmap = android.graphics.BitmapFactory.decodeFile(outputFile.absolutePath)
-                requireActivity().runOnUiThread {
-                    // El waveform se agrega al MISMO canvas que el filmstrip: no hay
-                    // una segunda vista que pueda desincronizarse.
-                    _binding?.homeContent?.filmstripTimeline?.setWaveform(bitmap)
+            FFmpegKit.executeAsync(command, { session ->
+                if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists()) {
+                    val bitmap = android.graphics.BitmapFactory.decodeFile(outputFile.absolutePath)
+                    requireActivity().runOnUiThread {
+                        // El waveform se agrega al MISMO canvas que el filmstrip: no hay
+                        // una segunda vista que pueda desincronizarse.
+                        _binding?.homeContent?.filmstripTimeline?.setWaveform(bitmap)
+                    }
                 }
-            }
-            videoFile.delete()
-        })
+                videoFile.delete()
+            })
+        }.start()
     }
 
 
@@ -2236,24 +2267,123 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         }.start()
     }
 
-    private fun crearVideoDesdeFotos(uris: List<Uri>) {
-        Toast.makeText(requireContext(), getString(R.string.creando_slideshow_msg, uris.size), Toast.LENGTH_LONG).show(); mostrarProgreso()
+    private fun startStampingSession() {
+        val audioUri = slideshowAudioUri ?: return
+        slideshowStampTimestamps.clear()
+        slideshowImageDurations.clear()
+        initializePlayer()
+        exoPlayer?.apply {
+            setMediaItem(MediaItem.fromUri(audioUri))
+            prepare()
+            play()
+        }
+        isStampingMode = true
+
+        binding.homeContent.btnStampMark.visibility = View.VISIBLE
+        binding.homeContent.btnStampMark.text = if (slideshowImages.size > 1) "SIGUIENTE FOTO" else "FINALIZAR"
+        binding.homeContent.tvSubtitleOverlay.visibility = View.VISIBLE
+        binding.homeContent.tvSubtitleOverlay.text = "Foto 1/${slideshowImages.size} — tocá cuando quieras pasar a la siguiente"
+        highlightStampImage(0)
+
+        binding.homeContent.btnStampMark.setOnClickListener { onStampButtonTapped() }
+    }
+
+    private fun onStampButtonTapped() {
+        if (!isStampingMode) return
+        val currentMs = exoPlayer?.currentPosition ?: return
+        slideshowStampTimestamps.add(currentMs)
+
+        val marcadas = slideshowStampTimestamps.size // cantidad de boundaries ya marcadas
+        if (marcadas >= slideshowImages.size) {
+            finishStampingSession()
+        } else {
+            val currentIndex = marcadas // índice de la foto que arranca ahora
+            highlightStampImage(currentIndex)
+            val esUltima = marcadas == slideshowImages.size - 1
+            binding.homeContent.btnStampMark.text = if (esUltima) "FINALIZAR" else "SIGUIENTE FOTO"
+            binding.homeContent.tvSubtitleOverlay.text = "Foto ${currentIndex + 1}/${slideshowImages.size}"
+        }
+    }
+
+    private fun finishStampingSession() {
+        exoPlayer?.pause()
+        isStampingMode = false
+        binding.homeContent.btnStampMark.visibility = View.GONE
+        binding.homeContent.tvSubtitleOverlay.visibility = View.GONE
+        computeDurationsFromStamps()
+        Toast.makeText(requireContext(), "Sincronización lista (${slideshowImageDurations.size} fotos). Tocá Sync Fotos de nuevo para generar el video.", Toast.LENGTH_LONG).show()
+    }
+
+    private fun computeDurationsFromStamps() {
+        slideshowImageDurations.clear()
+        var previous = 0L
+        // Mínimo 200ms por foto para evitar duraciones nulas por doble-tap accidental
+        slideshowStampTimestamps.forEach { t ->
+            slideshowImageDurations.add((t - previous).coerceAtLeast(200L))
+            previous = t
+        }
+    }
+
+    private fun highlightStampImage(index: Int) {
+        binding.homeContent.rvFilmstrip.scrollToPosition(index)
+    }
+
+    private fun crearVideoDesdeFotos(uris: List<Uri>, durationsMs: List<Long>? = null, audioUri: Uri? = null) {
+        val effectiveDurations = if (durationsMs != null && durationsMs.size == uris.size) durationsMs else List(uris.size) { 3000L }
+
+        Toast.makeText(requireContext(), getString(R.string.creando_slideshow_msg, uris.size), Toast.LENGTH_LONG).show()
         Thread {
             try {
                 val carpetaTemp = File(requireContext().cacheDir, "slideshow_${System.currentTimeMillis()}").apply { mkdirs() }
-                uris.forEachIndexed { index, uri -> val destino = File(carpetaTemp, "img%03d.jpg".format(index)); requireContext().contentResolver.openInputStream(uri)?.use { input -> FileOutputStream(destino).use { output -> input.copyTo(output) } } }
-                val fileName = "Slideshow_${System.currentTimeMillis()}.mp4"; val outputFile = File(requireContext().cacheDir, "output_slideshow.mp4"); if (outputFile.exists()) outputFile.delete()
-                val inputArgs = StringBuilder(); val filterComplex = StringBuilder()
-                uris.forEachIndexed { index, _ -> val imgPath = File(carpetaTemp, "img%03d.jpg".format(index)).absolutePath; inputArgs.append("-loop 1 -t 3 -i $imgPath "); filterComplex.append("[$index:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,fps=30[v$index];") }
+                uris.forEachIndexed { index, uri ->
+                    val destino = File(carpetaTemp, "img%03d.jpg".format(index))
+                    requireContext().contentResolver.openInputStream(uri)?.use { input -> FileOutputStream(destino).use { output -> input.copyTo(output) } }
+                }
+
+                val fileName = "Slideshow_${System.currentTimeMillis()}.mp4"
+                val outputFile = File(requireContext().cacheDir, "output_slideshow.mp4")
+                if (outputFile.exists()) outputFile.delete()
+
+                val inputArgs = StringBuilder()
+                val filterComplex = StringBuilder()
+                uris.forEachIndexed { index, _ ->
+                    val imgPath = File(carpetaTemp, "img%03d.jpg".format(index)).absolutePath
+                    val durSec = effectiveDurations[index] / 1000.0
+                    inputArgs.append("-loop 1 -t $durSec -i $imgPath ")
+                    filterComplex.append("[$index:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,fps=30[v$index];")
+                }
                 for (index in uris.indices) filterComplex.append("[v$index]")
                 filterComplex.append("concat=n=${uris.size}:v=1:a=0[outv]")
+
                 val filterScriptFile = File(requireContext().cacheDir, "slideshow_filter.txt").apply { writeText(filterComplex.toString()) }
-                val command = "-y $inputArgs-filter_complex_script \"${filterScriptFile.absolutePath}\" -map [outv] -c:v mpeg4 -q:v 3 \"${outputFile.absolutePath}\""; val totalDuration = (uris.size * 3000).toLong(); mostrarProgreso(totalDuration)
+                val totalDuration = effectiveDurations.sum()
+                requireActivity().runOnUiThread { mostrarProgreso(totalDuration) }
+
+                // Si hay audio de referencia, se mux-ea al resultado final
+                val audioFile = audioUri?.let { cacheUriToFile(it, "slideshow_audio.tmp") }
+
+                val command = if (audioFile != null) {
+                    "-y $inputArgs-i \"${audioFile.absolutePath}\" -filter_complex_script \"${filterScriptFile.absolutePath}\" -map [outv] -map ${uris.size}:a -c:v mpeg4 -q:v 3 -c:a aac -shortest \"${outputFile.absolutePath}\""
+                } else {
+                    "-y $inputArgs-filter_complex_script \"${filterScriptFile.absolutePath}\" -map [outv] -c:v mpeg4 -q:v 3 \"${outputFile.absolutePath}\""
+                }
+
                 FFmpegKit.executeAsync(command, { session ->
-                    if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) saveToDownloads(outputFile, fileName)
-                    ocultarProgreso(); carpetaTemp.deleteRecursively(); filterScriptFile.delete(); if (outputFile.exists()) outputFile.delete()
+                    if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
+                        saveToDownloads(outputFile, fileName)
+                    } else {
+                        Log.e("FFmpegSlideshow", session.allLogsAsString)
+                    }
+                    ocultarProgreso()
+                    carpetaTemp.deleteRecursively()
+                    filterScriptFile.delete()
+                    audioFile?.delete()
+                    if (outputFile.exists()) outputFile.delete()
                 }, { stats -> actualizarProgreso(stats.time, totalDuration) })
-            } catch (e: Exception) { ocultarProgreso() }
+            } catch (e: Exception) {
+                Log.e("FFmpegSlideshow", "Error: ${e.message}")
+                ocultarProgreso()
+            }
         }.start()
     }
 
