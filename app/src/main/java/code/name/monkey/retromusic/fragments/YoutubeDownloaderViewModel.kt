@@ -116,6 +116,7 @@ class YoutubeDownloaderViewModel : ViewModel() {
                 if (!downloadFolder.exists()) downloadFolder.mkdirs()
 
                 request.addOption("-o", "${downloadFolder.absolutePath}/%(title)s.%(ext)s")
+                request.addOption("--trim-filenames", "100")
 
                 var downloadedFile: File? = null
 

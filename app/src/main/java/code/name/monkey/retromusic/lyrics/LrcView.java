@@ -65,6 +65,7 @@ public class LrcView extends View {
     private int mCurrentTextColor;
     private float mCurrentTextSize;
     private int mPreviousLineTextColor = android.graphics.Color.parseColor("#FFEB3B");
+    private int mOriginalHighlightColor = 0xFF87CEFA;
     private int mTimelineTextColor;
     private int mTimelineColor;
     private int mTimeTextColor;
@@ -470,6 +471,7 @@ public class LrcView extends View {
                 mLrcPaint.setTextSize(mNormalTextSize);
                 mLrcPaint.setColor(mNormalTextColor);
             }
+            mLrcEntryList.get(i).setOriginalHighlighted(i == mCurrentLine, mOriginalHighlightColor);
             drawText(canvas, mLrcEntryList.get(i).getStaticLayout(), y);
         }
     }

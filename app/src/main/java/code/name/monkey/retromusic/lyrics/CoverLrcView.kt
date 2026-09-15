@@ -61,6 +61,7 @@ class CoverLrcView @JvmOverloads constructor(
     private var mCurrentTextColor = 0
     private var mCurrentTextSize = 0f
     private var mPreviousLineTextColor = Color.YELLOW
+    private var mOriginalHighlightColor: Int = 0xFF87CEFA.toInt() // mismo azul pastel del editor
     private var mTimelineTextColor = 0
     private var mTimelineColor = 0
     private var mTimeTextColor = 0
@@ -265,7 +266,10 @@ class CoverLrcView @JvmOverloads constructor(
         mPreviousLineTextColor = previousLineColor
         postInvalidate()
     }
-
+    fun setOriginalHighlightColor(color: Int) {
+        mOriginalHighlightColor = color
+        postInvalidate()
+    }
     fun setTimelineTextColor(timelineTextColor: Int) {
         mTimelineTextColor = timelineTextColor
         postInvalidate()
@@ -401,6 +405,7 @@ class CoverLrcView @JvmOverloads constructor(
                 mLrcPaint.textSize = mNormalTextSize
                 mLrcPaint.color = mNormalTextColor
             }
+            mLrcEntryList[i].setOriginalHighlighted(i == mCurrentLine, mOriginalHighlightColor)
             drawText(canvas, mLrcEntryList[i].staticLayout, y)
         }
     }

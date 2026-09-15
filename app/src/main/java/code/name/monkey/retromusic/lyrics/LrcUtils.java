@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
+import java.util.LinkedHashMap;
 /** 工具类 */
 class LrcUtils {
   private static final Pattern PATTERN_LINE =
@@ -65,31 +65,51 @@ class LrcUtils {
   }
 
   /** 从文件解析歌词 */
-  private static List<LrcEntry> parseLrc(File lrcFile) {
-    if (lrcFile == null || !lrcFile.exists()) {
-      return null;
-    }
-
-    List<LrcEntry> entryList = new ArrayList<>();
-    try {
-      BufferedReader br =
-          new BufferedReader(
-              new InputStreamReader(new FileInputStream(lrcFile), StandardCharsets.UTF_8));
-      String line;
-      while ((line = br.readLine()) != null) {
-        List<LrcEntry> list = parseLine(line);
-        if (list != null && !list.isEmpty()) {
-          entryList.addAll(list);
+    /** 从文件解析歌词 (con soporte de traducción embebida: timestamps repetidos) */
+    private static List<LrcEntry> parseLrc(File lrcFile) {
+        if (lrcFile == null || !lrcFile.exists()) {
+            return null;
         }
-      }
-      br.close();
-    } catch (IOException e) {
-      e.printStackTrace();
+
+        List<LrcEntry> rawList = new ArrayList<>();
+        try {
+            BufferedReader br =
+                    new BufferedReader(
+                            new InputStreamReader(new FileInputStream(lrcFile), StandardCharsets.UTF_8));
+            String line;
+            while ((line = br.readLine()) != null) {
+                List<LrcEntry> list = parseLine(line);
+                if (list != null && !list.isEmpty()) {
+                    rawList.addAll(list);
+                }
+            }
+            br.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return mergeDuplicateTimes(rawList);
+    }
+    /**
+     * Fusiona entradas con el mismo timestamp: la primera aparición es el original,
+     * la segunda se toma como traducción. Si no hay repetidos, devuelve la lista tal cual.
+     */
+    private static List<LrcEntry> mergeDuplicateTimes(List<LrcEntry> rawList) {
+        LinkedHashMap<Long, LrcEntry> merged = new LinkedHashMap<>();
+        for (LrcEntry entry : rawList) {
+            LrcEntry existing = merged.get(entry.getTime());
+            if (existing == null) {
+                merged.put(entry.getTime(), entry);
+            } else if (TextUtils.isEmpty(existing.getSecondText())) {
+                existing.setSecondText(entry.getText());
+            }
+        }
+
+        List<LrcEntry> entryList = new ArrayList<>(merged.values());
+        Collections.sort(entryList);
+        return entryList;
     }
 
-    Collections.sort(entryList);
-    return entryList;
-  }
 
   /** 从文本解析双语歌词 */
   static List<LrcEntry> parseLrc(String[] lrcTexts) {
@@ -133,8 +153,7 @@ class LrcUtils {
       }
     }
 
-    Collections.sort(entryList);
-    return entryList;
+      return mergeDuplicateTimes(entryList);
   }
 
   /** 获取网络文本，需要在工作线程中执行 */

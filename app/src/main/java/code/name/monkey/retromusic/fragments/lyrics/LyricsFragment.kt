@@ -81,7 +81,7 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
             setTimeTextColor(Color.YELLOW)
             setTimelineColor(Color.YELLOW)
             setTimelineTextColor(Color.YELLOW)
-            setPreviousLineColor(accentColor())
+            setPreviousLineColor(androidx.core.content.ContextCompat.getColor(requireContext(), R.color.lrc_normal_text_color))
             setDraggable(true, LrcView.OnPlayClickListener {
                 seekToProgress(it.toInt())
                 return@OnPlayClickListener true

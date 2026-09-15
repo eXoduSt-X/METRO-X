@@ -261,7 +261,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 if (outputFile.exists()) outputFile.delete()
 
                 val filterFile = File(requireContext().cacheDir, "mix_filter.txt").apply { writeText(filterComplex.toString()) }
-                val command = "-y $inputArgs -filter_complex_script \"${filterFile.absolutePath}\" -map \"[outv]\" -map \"[outa]\" -c:v h264_mediacodec -b:v 3M -c:a aac -b:a 128k \"${outputFile.absolutePath}\""
+                val command = "-y $inputArgs -filter_complex_script \"${filterFile.absolutePath}\" -map \"[outv]\" -map \"[outa]\" " +
+                        "-c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 128k \"${outputFile.absolutePath}\""
 
                 FFmpegKit.executeAsync(command, { session ->
                     if (ReturnCode.isSuccess(session.returnCode)) {
@@ -1697,6 +1698,14 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     private fun buildAssFromSubtitleList(videoUri: Uri): File {
         val (playResX, playResY) = getVideoResolution(videoUri)
         val subtitleFontSize = (playResY * 0.06).toInt().coerceIn(16, 60)
+        val watermarkFontSize = (playResY * 0.045).toInt().coerceIn(12, 45)
+
+        val originalItalic = if (binding.homeContent.cbOriginalItalic.isChecked) -1 else 0
+        val translationItalic = if (binding.homeContent.cbTranslationItalic.isChecked) -1 else 0
+        val addMtvInfo = binding.homeContent.cbWorkshopMtvInfo.isChecked
+        val artist = binding.homeContent.etMtvArtist.text.toString().trim()
+        val song = binding.homeContent.etMtvSong.text.toString().trim()
+        val album = binding.homeContent.etMtvYear.text.toString().trim()
 
         fun msToAss(ms: Long): String {
             val totalSeconds = ms / 1000
@@ -1717,10 +1726,23 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         ass.append("ScaledBorderAndShadow: yes\n\n")
         ass.append("[V4+ Styles]\n")
         ass.append("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-        ass.append("Style: Original,Roboto,$subtitleFontSize,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,20,20,25,1\n")
-        ass.append("Style: Translation,Roboto,$subtitleFontSize,&H0000FFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,8,20,20,15,1\n")
+        ass.append("Style: Original,Roboto,$subtitleFontSize,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,$originalItalic,0,0,100,100,0,0,1,2,1,2,20,20,25,1\n")
+        ass.append("Style: Translation,Roboto,$subtitleFontSize,&H0000FFFF,&H000000FF,&H00000000,&H00000000,0,$translationItalic,0,0,100,100,0,0,1,2,1,8,20,20,15,1\n")
+        if (addMtvInfo) {
+            ass.append("Style: Watermark,Roboto,$watermarkFontSize,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,1,20,10,20,1\n")
+        }
         ass.append("\n[Events]\n")
         ass.append("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+
+        if (addMtvInfo && (artist.isNotBlank() || song.isNotBlank() || album.isNotBlank())) {
+            val watermarkLines = listOfNotNull(
+                artist.takeIf { it.isNotBlank() },
+                song.takeIf { it.isNotBlank() },
+                album.takeIf { it.isNotBlank() }
+            )
+            val watermarkText = watermarkLines.joinToString("\\N")
+            ass.append("Dialogue: 0,${msToAss(3000)},${msToAss(8000)},Watermark,,0,0,0,,$watermarkText\n")
+        }
 
         subtitleList.forEach { sub ->
             val start = msToAss(sub.startTime)
@@ -2250,7 +2272,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             if (outputFile.exists()) outputFile.delete()
 
             val vFilter = "subtitles=${subFile.absolutePath}:fontsdir=${getFontDir().absolutePath}"
-            val command = "-y -i ${videoFile.absolutePath} -vf $vFilter -c:v h264_mediacodec -b:v 2M -c:a copy ${outputFile.absolutePath}"
+            val command = "-y -i \"${videoFile.absolutePath}\" -vf $vFilter " +
+                    "-c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -c:a copy \"${outputFile.absolutePath}\""
 
             FFmpegKit.executeAsync(command, { session ->
                 Log.d("FFmpegAssSubs", session.allLogsAsString)

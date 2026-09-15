@@ -211,7 +211,8 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
             setTimelineColor(android.graphics.Color.YELLOW)
             setNormalColor(secondaryColor)
             setTimelineTextColor(android.graphics.Color.YELLOW)
-            setPreviousLineColor(primaryColor)
+            setPreviousLineColor(secondaryColor)          // gris fijo, igual que las inactivas
+            setOriginalHighlightColor(0xFF87CEFA.toInt())  // azul pastel, igual que el editor
         }
     }
 
@@ -293,8 +294,7 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
                 setLRCViewColors(primaryColor, secondaryColor)
             }
             Color, Classic -> setLRCViewColors(color.primaryTextColor, color.secondaryTextColor)
-            Blur -> setLRCViewColors(Color.WHITE, ColorUtil.withAlpha(Color.WHITE, 0.5f))
-            else -> setLRCViewColors(primaryColor, secondaryColor)
+            Blur -> setLRCViewColors(android.graphics.Color.WHITE, ColorUtil.withAlpha(android.graphics.Color.WHITE, 0.5f))            else -> setLRCViewColors(primaryColor, secondaryColor)
         }
     }
 

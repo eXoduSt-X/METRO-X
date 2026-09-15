@@ -18,97 +18,137 @@ import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 
 /**
  * 一行歌词实体
  */
 class LrcEntry implements Comparable<LrcEntry> {
-  public static final int GRAVITY_CENTER = 0;
-  public static final int GRAVITY_LEFT = 1;
-  public static final int GRAVITY_RIGHT = 2;
-  private final long time;
-  private final String text;
-  private String secondText;
-  private StaticLayout staticLayout;
-  /** 歌词距离视图顶部的距离 */
-  private float offset = Float.MIN_VALUE;
+    public static final int GRAVITY_CENTER = 0;
+    public static final int GRAVITY_LEFT = 1;
+    public static final int GRAVITY_RIGHT = 2;
+    private final long time;
+    private final String text;
+    private String secondText;
+    private StaticLayout staticLayout;
+    /** Referencia mutable al texto con traducción, para poder resaltar el original solo cuando está activo */
+    private SpannableString spannableShowText;
+    /** 歌词距离视图顶部的距离 */
+    private float offset = Float.MIN_VALUE;
 
-  LrcEntry(long time, String text) {
-    this.time = time;
-    this.text = text;
-  }
-
-  LrcEntry(long time, String text, String secondText) {
-    this.time = time;
-    this.text = text;
-    this.secondText = secondText;
-  }
-
-  void init(TextPaint paint, int width, int gravity) {
-    Layout.Alignment align;
-    switch (gravity) {
-      case GRAVITY_LEFT:
-        align = Layout.Alignment.ALIGN_NORMAL;
-        break;
-
-      default:
-      case GRAVITY_CENTER:
-        align = Layout.Alignment.ALIGN_CENTER;
-        break;
-
-      case GRAVITY_RIGHT:
-        align = Layout.Alignment.ALIGN_OPPOSITE;
-        break;
+    LrcEntry(long time, String text) {
+        this.time = time;
+        this.text = text;
     }
-    staticLayout = new StaticLayout(getShowText(), paint, width, align, 1f, 0f, false);
 
-    offset = Float.MIN_VALUE;
-  }
-
-  long getTime() {
-    return time;
-  }
-
-  StaticLayout getStaticLayout() {
-    return staticLayout;
-  }
-
-  int getHeight() {
-    if (staticLayout == null) {
-      return 0;
+    LrcEntry(long time, String text, String secondText) {
+        this.time = time;
+        this.text = text;
+        this.secondText = secondText;
     }
-    return staticLayout.getHeight();
-  }
 
-  public float getOffset() {
-    return offset;
-  }
+    void init(TextPaint paint, int width, int gravity) {
+        Layout.Alignment align;
+        switch (gravity) {
+            case GRAVITY_LEFT:
+                align = Layout.Alignment.ALIGN_NORMAL;
+                break;
 
-  public void setOffset(float offset) {
-    this.offset = offset;
-  }
+            default:
+            case GRAVITY_CENTER:
+                align = Layout.Alignment.ALIGN_CENTER;
+                break;
 
-  String getText() {
-    return text;
-  }
+            case GRAVITY_RIGHT:
+                align = Layout.Alignment.ALIGN_OPPOSITE;
+                break;
+        }
 
-  void setSecondText(String secondText) {
-    this.secondText = secondText;
-  }
+        CharSequence showText = getShowText();
+        if (!TextUtils.isEmpty(secondText)) {
+            spannableShowText = new SpannableString(showText);
+            showText = spannableShowText;
+        } else {
+            spannableShowText = null;
+        }
+        staticLayout = new StaticLayout(showText, paint, width, align, 1f, 0f, false);
 
-  private String getShowText() {
-    if (!TextUtils.isEmpty(secondText)) {
-      return text + "\n" + secondText;
-    } else {
-      return text;
+        offset = Float.MIN_VALUE;
     }
-  }
 
-  @Override
-  public int compareTo(LrcEntry entry) {
-    if (entry == null) {
-      return -1;
+    /**
+     * Resalta la porción de texto original en {@code highlightColor} solo cuando {@code highlighted}
+     * es true (línea activa); en cualquier otro caso, quita el resaltado y el texto sigue el color
+     * normal que ya trae el Paint del StaticLayout.
+     */
+    void setOriginalHighlighted(boolean highlighted, int highlightColor) {
+        if (spannableShowText == null) {
+            return;
+        }
+        ForegroundColorSpan[] existing =
+                spannableShowText.getSpans(0, text.length(), ForegroundColorSpan.class);
+        for (ForegroundColorSpan span : existing) {
+            spannableShowText.removeSpan(span);
+        }
+        if (highlighted) {
+            spannableShowText.setSpan(
+                    new ForegroundColorSpan(highlightColor),
+                    0,
+                    text.length(),
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
     }
-    return (int) (time - entry.getTime());
-  }
+
+    long getTime() {
+        return time;
+    }
+
+    StaticLayout getStaticLayout() {
+        return staticLayout;
+    }
+
+    int getHeight() {
+        if (staticLayout == null) {
+            return 0;
+        }
+        return staticLayout.getHeight();
+    }
+
+    public float getOffset() {
+        return offset;
+    }
+
+    public void setOffset(float offset) {
+        this.offset = offset;
+    }
+
+    String getText() {
+        return text;
+    }
+
+    String getSecondText() {
+        return secondText;
+    }
+
+    void setSecondText(String secondText) {
+        this.secondText = secondText;
+    }
+
+    private String getShowText() {
+        if (!TextUtils.isEmpty(secondText)) {
+            return text + "\n" + secondText;
+        } else {
+            return text;
+        }
+    }
+
+    @Override
+    public int compareTo(LrcEntry entry) {
+        if (entry == null) {
+            return -1;
+        }
+        return (int) (time - entry.getTime());
+    }
 }
