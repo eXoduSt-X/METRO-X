@@ -2393,7 +2393,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         val duration = try { val start = parseTimeToMillis(startTime); val end = parseTimeToMillis(endTime); end - start } catch (e: Exception) { 0L }; mostrarProgreso(duration)
         if (destUri != null) {
             val outputFile = File(requireContext().cacheDir, "output_split.mp4")
-            val command = "-y -i \"${videoFile.absolutePath}\" -ss $startTime -to $endTime -c copy \"${outputFile.absolutePath}\""
+            val command = "-y -i \"${videoFile.absolutePath}\" -ss $startTime -to $endTime " +
+        "-c:v libx264 -preset veryfast -crf 18 -c:a copy " +
+        "\"${outputFile.absolutePath}\""
             FFmpegKit.executeAsync(command, { session ->
                 ocultarProgreso(); if (ReturnCode.isSuccess(session.returnCode)) try { resolver.openOutputStream(destUri)?.use { out -> outputFile.inputStream().use { it.copyTo(out) } }; requireActivity().runOnUiThread { Toast.makeText(requireContext(), R.string.clip_guardado, Toast.LENGTH_LONG).show() } } catch (e: Exception) { Log.e("FFmpegError", e.message ?: "") }
                 videoFile.delete(); if (outputFile.exists()) outputFile.delete()
