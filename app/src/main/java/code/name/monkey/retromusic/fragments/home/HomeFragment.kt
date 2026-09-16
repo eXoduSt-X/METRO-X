@@ -70,20 +70,23 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import java.util.*
 import code.name.monkey.retromusic.fragments.ReloadType
-import android.media.MediaExtractor
-import android.media.MediaFormat
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.ViewModelProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import code.name.monkey.retromusic.fragments.home.HomeEditorViewModel.Orientation
 
 data class Subtitle(val startTime: Long, val endTime: Long, val original: String, val translation: String?)
 
 data class MediaMixItem(val uri: Uri, var durationMs: Long, val isVideo: Boolean)
 
+
 class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHelper {
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
+    private lateinit var editorViewModel: HomeEditorViewModel
     private var savedPosition: Int = 0
     private var exoPlayer: ExoPlayer? = null
     private var wasPlayingBeforePause = false
@@ -97,7 +100,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     private var selectedAssSubtitleUri: Uri? = null
     private var isProcessing = false
-    private var selectedAudioUri: Uri? = null
     private var selectedAudioUris = mutableListOf<Uri>()
 
     private var slideshowAudioUri: Uri? = null
@@ -107,7 +109,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     private val multiplexAudioUris = mutableListOf<Uri>()
     private val multiplexSubtitleUris = mutableListOf<Uri>()
-
     private val mAudioPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             multiplexAudioUris.add(it)
@@ -143,7 +144,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     private var tempProductionAudioUri: Uri? = null
 
     private var combinedMediaItems = mutableListOf<MediaMixItem>()
-
     private val combinedPickerLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isNotEmpty()) {
             uris.forEach { uri ->
@@ -225,66 +225,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     private fun startCombinedJoin() {
         if (combinedMediaItems.isEmpty()) return
         Toast.makeText(requireContext(), "Procesando mezcla de medios...", Toast.LENGTH_LONG).show()
-
-        val targetW = 1280
-        val targetH = 720
-        val totalDurationMs = combinedMediaItems.sumOf { it.durationMs }
-        mostrarProgreso(totalDurationMs)
-
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val inputFiles = combinedMediaItems.mapIndexed { i, item ->
-                    cacheUriToFile(item.uri, "mix_input_$i.${getFileExtension(item.uri)}")
-                }
-
-                val filterComplex = StringBuilder()
-                val inputArgs = StringBuilder()
-
-                inputFiles.forEachIndexed { i, file ->
-                    val item = combinedMediaItems[i]
-                    inputArgs.append("-i \"${file.absolutePath}\" ")
-
-                    if (item.isVideo) {
-                        filterComplex.append("[$i:v]scale=$targetW:$targetH:force_original_aspect_ratio=decrease,pad=$targetW:$targetH:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v$i];")
-                        filterComplex.append("[$i:a]aformat=sample_rates=44100:channel_layouts=stereo[a$i];")
-                    } else {
-                        val durSec = item.durationMs / 1000.0
-                        // Usar loop con duracion dinamica
-                        filterComplex.append("[$i:v]loop=loop=-1:size=1:start=0,scale=$targetW:$targetH:force_original_aspect_ratio=decrease,pad=$targetW:$targetH:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p,trim=duration=$durSec[v$i];")
-                        filterComplex.append("anullsrc=r=44100:cl=stereo[a${i}_silence]; [a${i}_silence]atrim=duration=$durSec[a$i];")
-                    }
-                }
-
-                for (i in inputFiles.indices) {
-                    filterComplex.append("[v$i][a$i]")
-                }
-                filterComplex.append("concat=n=${inputFiles.size}:v=1:a=1[outv][outa]")
-
-                val outputFile = File(requireContext().cacheDir, "mix_output.mp4")
-                if (outputFile.exists()) outputFile.delete()
-
-                val filterFile = File(requireContext().cacheDir, "mix_filter.txt").apply { writeText(filterComplex.toString()) }
-                val command = "-y $inputArgs -filter_complex_script \"${filterFile.absolutePath}\" -map \"[outv]\" -map \"[outa]\" " +
-                        "-c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 128k \"${outputFile.absolutePath}\""
-
-                FFmpegKit.executeAsync(command, { session ->
-                    if (ReturnCode.isSuccess(session.returnCode)) {
-                        saveToDownloads(outputFile, "Mix_${System.currentTimeMillis()}.mp4")
-                    } else {
-                        Log.e("FFmpegMix", session.allLogsAsString)
-                    }
-                    ocultarProgreso()
-                    inputFiles.forEach { it.delete() }
-                    filterFile.delete()
-                    combinedMediaItems.clear()
-                    requireActivity().runOnUiThread { updateCombinedFilmstrip() }
-                }, { stats -> actualizarProgreso(stats.time, totalDurationMs) })
-
-            } catch (e: Exception) {
-                Log.e("FFmpegMix", "Error: ${e.message}")
-                ocultarProgreso()
-            }
-        }
+        editorViewModel.joinCombinedMedia(combinedMediaItems.toList(), getSelectedMpeg4Quality().args)
+        combinedMediaItems.clear()
+        requireActivity().runOnUiThread { updateCombinedFilmstrip() }
     }
 
     private var workshopSubtitleIndex = -1
@@ -401,10 +344,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             }
         }
     }
-
-    private var isUserTouchingFilmstrip = false
-    private var lastManualScrollTime = 0L
-    private var pendingSeekMs: Long = -1L
     private val hideResolutionRunnable = Runnable {
         _binding?.homeContent?.tvResolutionOverlay?.visibility = View.GONE
     }
@@ -453,13 +392,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 // Sincronización con la timeline: scrollTo() directo, sin diffs ni
                 // umbrales — es barato e idempotente, y solo corre cuando el usuario
                 // no está arrastrando, así que nunca compite con su gesto.
-                if (!isUserTouchingFilmstrip && System.currentTimeMillis() - lastManualScrollTime > 300) {
-                    val timeline = binding.homeContent.filmstripTimeline
-                    if (timeline.pxPerMs > 0f) {
-                        binding.homeContent.hsvFilmstrip.scrollTo(timeline.timeMsToPx(currentPos.toLong()), 0)
-                    }
-                }
-
                 handler.postDelayed(this, 50) // Alta frecuencia (20fps), pero solo mientras se reproduce
             }
         }
@@ -535,29 +467,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             }
         }
     }
-
-    private fun detectarStreams(file: File): Pair<List<Int>, List<Int>> {
-        val audioIndices = mutableListOf<Int>()
-        val subtitleIndices = mutableListOf<Int>()
-        val extractor = MediaExtractor()
-        try {
-            extractor.setDataSource(file.absolutePath)
-            for (i in 0 until extractor.trackCount) {
-                val format = extractor.getTrackFormat(i)
-                val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
-                when {
-                    mime.startsWith("audio/") -> audioIndices.add(i)
-                    mime.startsWith("text/") || mime.startsWith("application/") -> subtitleIndices.add(i)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("MediaExtractorCheck", "Error leyendo tracks: ${e.message}")
-        } finally {
-            extractor.release()
-        }
-        return audioIndices to subtitleIndices
-    }
-
     private fun refrescarListaVideos() {
         val folderUri = selectedFolderUri ?: loadSavedFolderUri()
         if (folderUri != null) {
@@ -702,64 +611,62 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     }
 
     private fun unirVideos(uris: List<Uri>) {
-        Toast.makeText(requireContext(), "Uniendo ${uris.size} videos...", Toast.LENGTH_LONG).show()
-        val totalDuration = uris.sumOf { getMediaDuration(it) }
-        mostrarProgreso(totalDuration)
+        // Análisis rápido (solo lee metadata, no procesa video)
+        val analysis = editorViewModel.analyzeMergeCompatibility(uris)
 
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val archivos = uris.mapIndexed { i, uri ->
-                    cacheUriToFile(uri, "merge_input_$i.mp4")
-                }
-
-                val listaFile = File(requireContext().cacheDir, "merge_list.txt")
-                listaFile.writeText(archivos.joinToString("\n") { "file '${it.absolutePath}'" })
-
-                val nombreSalida = "Video_Unido_${System.currentTimeMillis()}.mp4"
-                val outputFile = File(requireContext().cacheDir, "merge_output.mp4")
-                if (outputFile.exists()) {
-                    outputFile.delete()
-                }
-
-                val command = "-f concat -safe 0 -i \"${listaFile.absolutePath}\" -c copy \"${outputFile.absolutePath}\""
-                Log.d("FFmpegMerge", "Comando: $command")
-
-                FFmpegKit.executeAsync(command, { session ->
-                    if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
-                        saveToDownloads(outputFile, nombreSalida, "video/mp4")
-                    } else {
-                        Log.e("FFmpegMerge", session.allLogsAsString)
-                        requireActivity().runOnUiThread {
-                            Toast.makeText(requireContext(), R.string.error_al_unir, Toast.LENGTH_SHORT).show()
-                        }
+        when {
+            // Caso 1: hay mezcla de orientaciones -> avisar y pedir confirmación
+            analysis.mismatchedIndices.isNotEmpty() -> {
+                val listaDesalineados = analysis.mismatchedIndices.joinToString("\n") { idx ->
+                    val meta = analysis.metas[idx]
+                    val orient = when (meta.orientation) {
+                        Orientation.PORTRAIT -> "Vertical"
+                        Orientation.LANDSCAPE -> "Horizontal"
+                        Orientation.SQUARE -> "Cuadrado"
                     }
-                    archivos.forEach { it.delete() }
-                    listaFile.delete()
-                    if (outputFile.exists()) outputFile.delete()
-                    ocultarProgreso()
-                }, { stats ->
-                    actualizarProgreso(stats.time, totalDuration)
-                })
-            } catch (exception: Exception) {
-                Log.e("FFmpegMerge", "Error preparando archivos: ${exception.message}")
-                requireActivity().runOnUiThread {
-                    Toast.makeText(requireContext(), R.string.error_preparando_archivos, Toast.LENGTH_SHORT).show()
+                    "• ${meta.name} — $orient"
                 }
-                ocultarProgreso()
+                val targetLabel = when (analysis.majorityOrientation) {
+                    Orientation.PORTRAIT -> "vertical (720x1280)"
+                    Orientation.LANDSCAPE -> "horizontal (1280x720)"
+                    Orientation.SQUARE -> "cuadrado (720x720)"
+                }
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Formatos diferentes detectados")
+                    .setMessage(
+                        "Estos videos no coinciden con el formato mayoritario:\n\n" +
+                                "$listaDesalineados\n\n" +
+                                "Si continuás, todos se normalizarán al formato mayoritario: $targetLabel.\n" +
+                                "El proceso tardará más porque hay que reencodear."
+                    )
+                    .setPositiveButton("CONTINUAR") { _, _ ->
+                        editorViewModel.mergeVideos(uris, analysis.majorityOrientation, getSelectedMpeg4Quality().args)
+                        mergeVideosUris.clear()
+                        binding.homeContent.rvFilmstrip.visibility = View.GONE
+                    }
+                    .setNegativeButton(R.string.action_cancel, null)
+                    .show()
             }
-        }
-    }
 
+            // Caso 2: todos iguales, pero no son idénticos en resolución/códec -> reencode silencioso
+            !analysis.canStreamCopy -> {
+                Toast.makeText(
+                    requireContext(),
+                    "Uniendo videos (reencode necesario, puede tardar)...",
+                    Toast.LENGTH_LONG
+                ).show()
+                editorViewModel.mergeVideos(uris, analysis.majorityOrientation, getSelectedMpeg4Quality().args)
+                mergeVideosUris.clear()
+                binding.homeContent.rvFilmstrip.visibility = View.GONE
+            }
 
-    private fun getVideoWidth(file: File): Int {
-        return try {
-            val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(file.absolutePath)
-            val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 624
-            retriever.release()
-            width
-        } catch (exception: Exception) {
-            624
+            // Caso 3: todo homogéneo, -c copy directo
+            else -> {
+                Toast.makeText(requireContext(), "Uniendo ${uris.size} videos...", Toast.LENGTH_LONG).show()
+                editorViewModel.mergeVideos(uris, analysis.majorityOrientation, getSelectedMpeg4Quality().args)
+                mergeVideosUris.clear()
+                binding.homeContent.rvFilmstrip.visibility = View.GONE
+            }
         }
     }
     private fun parseAss(inputStream: java.io.InputStream) {
@@ -940,6 +847,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentHomeBinding.bind(view)
 
+        editorViewModel = ViewModelProvider(this)[HomeEditorViewModel::class.java]
+        observeEditorViewModel()
+
         updateSlideshowFilmstrip()
 
         binding.imageLayout.visibility = View.GONE
@@ -1009,7 +919,54 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         view.doOnPreDraw { startPostponedEnterTransition() }
         view.doOnLayout { adjustPlaylistButtons() }
     }
+    private fun observeEditorViewModel() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            editorViewModel.progress.collectLatest { p ->
+                if (p == null) {
+                    ocultarProgreso()
+                } else {
+                    isProcessing = true
+                    _binding?.homeContent?.progressBar?.let { pb ->
+                        pb.isIndeterminate = p.totalMs == 0L
+                        pb.visibility = View.VISIBLE
+                        if (p.totalMs > 0L) {
+                            val pct = ((p.currentMs / p.totalMs) * 100).toInt().coerceIn(0, 100)
+                            pb.progress = pct
+                        }
+                    }
+                    _binding?.homeContent?.tvSubtitleOverlay?.let { tv ->
+                        tv.visibility = View.VISIBLE
+                        val prefix = getString(R.string.procesando_archivo)
+                        tv.text = if (p.label != null) {
+                            val pct = if (p.totalMs > 0) " (${((p.currentMs / p.totalMs) * 100).toInt()}%)" else ""
+                            "${p.label}$pct"
+                        } else if (p.totalMs > 0L) {
+                            "$prefix (${((p.currentMs / p.totalMs) * 100).toInt()}%)"
+                        } else prefix
+                    }
+                }
+            }
+        }
 
+        viewLifecycleOwner.lifecycleScope.launch {
+            editorViewModel.events.collectLatest { ev ->
+                when (ev) {
+                    is EditorEvent.Saved -> Toast.makeText(
+                        requireContext(),
+                        getString(R.string.guardado_en_downloads) + ": ${ev.fileName}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    is EditorEvent.Error -> Toast.makeText(requireContext(), ev.message, Toast.LENGTH_LONG).show()
+                    is EditorEvent.Info -> Toast.makeText(requireContext(), ev.message, Toast.LENGTH_LONG).show()
+                    EditorEvent.Finished -> {
+                        // Nada acá: el StateFlow de progress pasa a null y ocultarProgreso()
+                        // se llama solo. Este evento queda por si en el futuro querés
+                        // disparar refresh de la lista de downloads, etc.
+                    }
+                }
+            }
+        }
+    }
     private fun initializePlayer() {
         if (exoPlayer == null) {
             exoPlayer = ExoPlayer.Builder(requireContext()).build().also { player ->
@@ -1130,6 +1087,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     private fun setupToolStrip() {
         val tools = listOf(
             ToolButtonItem("folder", R.drawable.ic_vfolder, "Carpeta"),
+            ToolButtonItem("quality", R.drawable.ic_dashboard, "Calidad"),  // ← NUEVO
             ToolButtonItem("mix", R.drawable.ic_vid, "MIX"),
             ToolButtonItem("merge", R.drawable.ic_unir, "Unir Videos"),
             ToolButtonItem("split", R.drawable.ic_cut, "Cortar"),
@@ -1184,6 +1142,7 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 }
             }
             "split" -> mostrarDialogoCortar()
+            "quality" -> mostrarSelectorCalidadMpeg4()
             "fade" -> mostrarDialogoFade()
             "gif" -> {
                 if (videoPlaylist.isNotEmpty()) convertirVideoAGif(videoPlaylist[currentIndex])
@@ -1587,57 +1546,10 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     }
     private fun splitVideoMultiple(videoUri: Uri, ranges: List<CutRange>) {
         Toast.makeText(requireContext(), "Cortando ${ranges.size} clips...", Toast.LENGTH_LONG).show()
-
-        val totalDuration = ranges.sumOf {
-            try {
-                (parseTimeToMillis(it.end) - parseTimeToMillis(it.start)).coerceAtLeast(0)
-            } catch (e: Exception) { 0L }
-        }
-        mostrarProgreso(totalDuration)
-
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            val videoFile = cacheUriToFile(videoUri, "input_split_multi.mp4")
-            val originalName = requireContext().contentResolver.query(videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
-            val baseName = originalName.substringBeforeLast(".")
-
-            var exitosos = 0
-            var fallidos = 0
-            var elapsedBeforeCurrent = 0L
-
-            ranges.forEachIndexed { index, range ->
-                val fileName = "${baseName}_parte${index + 1}.mp4"
-                val outputFile = File(requireContext().cacheDir, "output_split_multi_$index.mp4")
-                if (outputFile.exists()) outputFile.delete()
-
-                val rangeDuration = try {
-                    (parseTimeToMillis(range.end) - parseTimeToMillis(range.start)).coerceAtLeast(0)
-                } catch (e: Exception) { 0L }
-
-                val command = "-y -i \"${videoFile.absolutePath}\" -ss ${range.start} -to ${range.end} -c copy \"${outputFile.absolutePath}\""
-
-                val capturedElapsed = elapsedBeforeCurrent
-                val session = FFmpegKit.execute(command) { stats ->
-                    actualizarProgreso((capturedElapsed + stats.time).toDouble(), totalDuration)
-                }
-
-                if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
-                    saveToDownloads(outputFile, fileName)
-                    exitosos++
-                } else {
-                    Log.e("FFmpegSplitMulti", "Falló corte ${index + 1} (${range.start}-${range.end}): ${session.allLogsAsString}")
-                    fallidos++
-                }
-                outputFile.delete()
-                elapsedBeforeCurrent += rangeDuration
-            }
-
-            videoFile.delete()
-            ocultarProgreso()
-            requireActivity().runOnUiThread {
-                Toast.makeText(requireContext(), "Cortes: $exitosos ok, $fallidos fallidos", Toast.LENGTH_LONG).show()
-            }
-        }
+        editorViewModel.splitVideoMultiple(
+            videoUri,
+            ranges.map { HomeEditorViewModel.CutRange(it.start, it.end) }
+        )
     }
     private fun mostrarDialogoFade() {
         if (videoPlaylist.isEmpty()) {
@@ -1666,59 +1578,14 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             Toast.makeText(requireContext(), "Define al menos un tiempo de fade", Toast.LENGTH_SHORT).show()
             return
         }
-
         val videoUri = videoPlaylist[currentIndex]
-        val totalDurationMs = getMediaDuration(videoUri)
-        val totalDurationSec = totalDurationMs / 1000.0
-
-        if (fadeInSec + fadeOutSec > totalDurationSec) {
+        val totalSec = getMediaDuration(videoUri) / 1000.0
+        if (fadeInSec + fadeOutSec > totalSec) {
             Toast.makeText(requireContext(), "La suma de fades supera la duración del video", Toast.LENGTH_SHORT).show()
             return
         }
-
         Toast.makeText(requireContext(), "Aplicando fades...", Toast.LENGTH_LONG).show()
-        mostrarProgreso(totalDurationMs)
-
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            val videoFile = cacheUriToFile(videoUri, "input_fade.mp4")
-            val outputFile = File(requireContext().cacheDir, "output_fade.mp4")
-            if (outputFile.exists()) outputFile.delete()
-
-            val originalName = requireContext().contentResolver.query(videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
-            val fileName = "${originalName.substringBeforeLast(".")}_fade.mp4"
-
-            val videoFilters = mutableListOf<String>()
-            val audioFilters = mutableListOf<String>()
-
-            if (fadeInSec > 0.0) {
-                videoFilters.add("fade=t=in:st=0:d=$fadeInSec")
-                audioFilters.add("afade=t=in:st=0:d=$fadeInSec")
-            }
-            if (fadeOutSec > 0.0) {
-                val fadeOutStart = (totalDurationSec - fadeOutSec).coerceAtLeast(0.0)
-                videoFilters.add("fade=t=out:st=$fadeOutStart:d=$fadeOutSec")
-                audioFilters.add("afade=t=out:st=$fadeOutStart:d=$fadeOutSec")
-            }
-
-            val vChain = if (videoFilters.isNotEmpty()) "[0:v]${videoFilters.joinToString(",")}[v]" else "[0:v]null[v]"
-            val aChain = if (audioFilters.isNotEmpty()) "[0:a]${audioFilters.joinToString(",")}[a]" else "[0:a]anull[a]"
-            val filterComplex = "$vChain;$aChain"
-
-            val filterScriptFile = File(requireContext().cacheDir, "fade_filter.txt").apply { writeText(filterComplex) }
-
-            val command = "-y -i \"${videoFile.absolutePath}\" -filter_complex_script \"${filterScriptFile.absolutePath}\" " +
-                    "-map \"[v]\" -map \"[a]\" -c:v h264_mediacodec -b:v 2M -c:a aac \"${outputFile.absolutePath}\""
-
-            FFmpegKit.executeAsync(command, { session ->
-                if (ReturnCode.isSuccess(session.returnCode)) saveToDownloads(outputFile, fileName)
-                else Log.e("FFmpegFade", session.allLogsAsString)
-                ocultarProgreso()
-                videoFile.delete()
-                filterScriptFile.delete()
-                if (outputFile.exists()) outputFile.delete()
-            }, { stats -> actualizarProgreso(stats.time, totalDurationMs) })
-        }
+        editorViewModel.applyFade(videoUri, fadeInSec, fadeOutSec, getSelectedMpeg4Quality().args)
     }
     private fun buildAssFromSubtitleList(videoUri: Uri): File {
         val (playResX, playResY) = getVideoResolution(videoUri)
@@ -1826,13 +1693,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             binding.homeContent.hsvFilmstrip.visibility = View.GONE
             binding.homeContent.vFilmstripIndicator.visibility = View.GONE
         } else {
-            // Restaurar solo la vista que corresponde al modo activo: la timeline de
-            // video si hay una generada, o la lista de selección si estamos en modo
-            // slideshow/unir. La otra debe seguir oculta.
-            if (binding.homeContent.filmstripTimeline.pxPerMs > 0f) {
-                binding.homeContent.hsvFilmstrip.visibility = View.VISIBLE
-                binding.homeContent.vFilmstripIndicator.visibility = View.VISIBLE
-            } else if (slideshowImages.isNotEmpty() || mergeVideosUris.isNotEmpty()) {
+            // Solo restauramos la lista de selección si estamos en un modo que la usa
+            // (slideshow, unir videos, MIX). El filmstrip grande se retiró.
+            if (slideshowImages.isNotEmpty() || mergeVideosUris.isNotEmpty() || combinedMediaItems.isNotEmpty()) {
                 binding.homeContent.rvFilmstrip.visibility = View.VISIBLE
             }
         }
@@ -1876,10 +1739,9 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
                 play()
             }
             binding.homeContent.btnPlayPause.text = getString(R.string.pause)
-            generateFilmstrip(uri)
+            // Ya no generamos filmstrip: no aporta funcionalidad real.
         }
     }
-
     /**
      * Cablea la timeline UNA vez por filmstrip generado: un touch listener (para
      * pausar/reanudar y avisarle al padre que no intercepte el gesto) y un único
@@ -1889,150 +1751,6 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
      * nuestro propio scrollTo() al reproducir (ver updateSubtitleTask) y no hace
      * falta reaccionar a él.
      */
-    private fun setupFilmstripScrubbing() {
-        val hsv = binding.homeContent.hsvFilmstrip
-        val timeline = binding.homeContent.filmstripTimeline
-
-        hsv.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    // Evita que el CoordinatorLayout padre robe el gesto a mitad de
-                    // camino (causaba zigzag y layouts forzados a mitad del drag).
-                    v.parent?.requestDisallowInterceptTouchEvent(true)
-                    isUserTouchingFilmstrip = true
-                    exoPlayer?.pause()
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.parent?.requestDisallowInterceptTouchEvent(false)
-                    isUserTouchingFilmstrip = false
-                    lastManualScrollTime = System.currentTimeMillis()
-                    if (pendingSeekMs >= 0) {
-                        exoPlayer?.seekTo(pendingSeekMs)
-                        pendingSeekMs = -1L
-                    }
-                    v.performClick()
-                }
-            }
-            false // no consumir: dejar que el scroll nativo del HorizontalScrollView actúe
-        }
-
-        hsv.onScrollXChanged = { scrollX ->
-            if (isUserTouchingFilmstrip && _binding != null) {
-                val timeMs = timeline.pxToTimeMs(scrollX)
-                pendingSeekMs = timeMs
-                // Solo UI liviana durante el drag: el seek real pasa recién en
-                // ACTION_UP, para no meter trabajo pesado de decodificación en
-                // medio del gesto de scroll.
-                binding.homeContent.tvCurrentTime.text = formatTime(timeMs.toInt())
-                binding.homeContent.videoSeekBar.progress = timeMs.toInt()
-            }
-        }
-    }
-
-    private fun generateFilmstrip(uri: Uri) {
-        binding.homeContent.rvFilmstrip.visibility = View.GONE
-        binding.homeContent.hsvFilmstrip.visibility = View.GONE
-        binding.homeContent.vFilmstripIndicator.visibility = View.GONE
-        slideshowImages.clear()
-        mergeVideosUris.clear()
-        filmstripAdapter = null
-
-        val context = requireContext()
-        val density = resources.displayMetrics.density
-        val thumbWidthPx = (70 * density).toInt()
-
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            val retriever = MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(context, uri)
-                val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
-                val durationSec = durationMs / 1000
-
-                // CÁLCULO DINÁMICO: 1 frame cada 5 segundos. Mínimo 20, Máximo 100.
-                val frameCount = (durationSec / 5).toInt().coerceIn(20, 100)
-                val totalWidthPx = frameCount * thumbWidthPx
-                val interval = durationMs / frameCount
-
-                val frames = mutableListOf<code.name.monkey.retromusic.views.FilmstripTimelineView.Frame>()
-                slideshowImages.clear()
-
-                // Fallback: si un frame puntual falla (común cerca del final de videos
-                // largos, donde no siempre hay un frame decodificable exacto en el
-                // timestamp pedido), reusamos el último bitmap válido en vez de dejar
-                // null. Un solo fallo no debe tirar abajo la tira entera.
-                var lastGoodBitmap: Bitmap? = null
-
-                fun extractFrameSafe(atMs: Long): Bitmap? {
-                    return try {
-                        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                            retriever.getScaledFrameAtTime(atMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 120, 70)
-                        } else {
-                            retriever.getFrameAtTime(atMs * 1000)
-                        }
-                        if (b != null) lastGoodBitmap = b
-                        b ?: lastGoodBitmap
-                    } catch (e: Exception) {
-                        Log.w("Filmstrip", "Fallo extrayendo frame en ${atMs}ms: ${e.message}")
-                        lastGoodBitmap
-                    }
-                }
-
-                for (i in 0 until frameCount) {
-                    val timeMs = i * interval
-                    val bitmap = extractFrameSafe(timeMs)
-                    frames.add(code.name.monkey.retromusic.views.FilmstripTimelineView.Frame(timeMs, bitmap))
-                }
-
-                // Último frame: pedir el timestamp EXACTO de duración suele fallar (no
-                // hay frame decodificable en el último microsegundo). Retrocedemos medio
-                // segundo, margen seguro para este problema conocido.
-                val safeLastTimeMs = (durationMs - 500).coerceAtLeast(0)
-                val lastBitmap = extractFrameSafe(safeLastTimeMs)
-                frames.add(code.name.monkey.retromusic.views.FilmstripTimelineView.Frame(durationMs, lastBitmap))
-
-                requireActivity().runOnUiThread {
-                    if (_binding == null) return@runOnUiThread
-                    binding.homeContent.hsvFilmstrip.apply {
-                        setPadding(0, 0, resources.displayMetrics.widthPixels, 0)
-                        visibility = View.VISIBLE
-                    }
-                    binding.homeContent.filmstripTimeline.setTimeline(frames, durationMs, totalWidthPx)
-                    setupFilmstripScrubbing()
-                    binding.homeContent.vFilmstripIndicator.visibility = View.VISIBLE
-                    generateWaveform(uri, totalWidthPx)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                retriever.release()
-            }
-        }
-    }
-
-    private fun generateWaveform(uri: Uri, widthPx: Int) {
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            val videoFile = cacheUriToFile(uri, "input_waveform.mp4")
-            val outputFile = File(requireContext().cacheDir, "waveform.png")
-            if (outputFile.exists()) outputFile.delete()
-
-            // Comando FFmpeg para generar una imagen del espectro de audio
-            val command = "-y -i \"${videoFile.absolutePath}\" -filter_complex \"aformat=channel_layouts=mono,showwavespic=s=${widthPx}x80:colors=#00BFFF\" -frames:v 1 \"${outputFile.absolutePath}\""
-
-            FFmpegKit.executeAsync(command, { session ->
-                if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists()) {
-                    val bitmap = android.graphics.BitmapFactory.decodeFile(outputFile.absolutePath)
-                    requireActivity().runOnUiThread {
-                        // El waveform se agrega al MISMO canvas que el filmstrip: no hay
-                        // una segunda vista que pueda desincronizarse.
-                        _binding?.homeContent?.filmstripTimeline?.setWaveform(bitmap)
-                    }
-                }
-                videoFile.delete()
-            })
-        }
-    }
-
-
     private fun getFontDir(): File {
         val fontDir = File(requireContext().cacheDir, "subtitle_fonts").apply { if (!exists()) mkdirs() }
         val fontFile = File(fontDir, "roboto_regular.ttf")
@@ -2109,41 +1827,12 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     private fun agregarAudioAVideo(videoUri: Uri, audioUri: Uri) {
         Toast.makeText(requireContext(), R.string.agregando_audio_msg, Toast.LENGTH_LONG).show()
-        val duration = getMediaDuration(videoUri)
-        mostrarProgreso(duration)
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            val videoFile = cacheUriToFile(videoUri, "input_addaudio.mp4")
-            val audioFile = cacheUriToFile(audioUri, "input_addaudio_track")
-            val originalName = requireContext().contentResolver.query(videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
-            val fileName = "${originalName.substringBeforeLast(".")}_audio.mp4"
-            val outputFile = File(requireContext().cacheDir, "output_addaudio.mp4")
-            if (outputFile.exists()) outputFile.delete()
-            val command = "-y -i \"${videoFile.absolutePath}\" -i \"${audioFile.absolutePath}\" -map 0:v -map 1:a -c:v copy -c:a aac -shortest \"${outputFile.absolutePath}\""
-            FFmpegKit.executeAsync(command, { session ->
-                if (ReturnCode.isSuccess(session.returnCode)) saveToDownloads(outputFile, fileName)
-                ocultarProgreso(); videoFile.delete(); audioFile.delete(); if (outputFile.exists()) outputFile.delete()
-            }, { stats -> actualizarProgreso(stats.time, duration) })
-        }
+        editorViewModel.addAudioToVideo(videoUri, audioUri)
     }
 
     private fun convertirVideoAGif(videoUri: Uri, fps: Int = 10, anchoMax: Int = 480) {
         Toast.makeText(requireContext(), R.string.creando_gif_msg, Toast.LENGTH_LONG).show()
-        val duration = getMediaDuration(videoUri)
-        mostrarProgreso(duration)
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            val videoFile = cacheUriToFile(videoUri, "input_gif.mp4")
-            val originalName = requireContext().contentResolver.query(videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
-            val fileName = "${originalName.substringBeforeLast(".")}.gif"
-            val outputFile = File(requireContext().cacheDir, "output_gif.gif")
-            if (outputFile.exists()) outputFile.delete()
-            val filterComplex = "[0:v]fps=$fps,scale=$anchoMax:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse"
-            val filterScriptFile = File(requireContext().cacheDir, "gif_filter.txt").apply { writeText(filterComplex) }
-            val command = "-y -i \"${videoFile.absolutePath}\" -filter_complex_script \"${filterScriptFile.absolutePath}\" \"${outputFile.absolutePath}\""
-            FFmpegKit.executeAsync(command, { session ->
-                if (ReturnCode.isSuccess(session.returnCode)) saveToDownloads(outputFile, fileName, "image/gif")
-                ocultarProgreso(); videoFile.delete(); filterScriptFile.delete(); if (outputFile.exists()) outputFile.delete()
-            }, { stats -> actualizarProgreso(stats.time, duration) })
-        }
+        editorViewModel.videoToGif(videoUri, fps, anchoMax)
     }
 
     private fun formatTime(millis: Int): String {
@@ -2209,19 +1898,63 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     fun setSharedAxisYTransitions() { exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).addTarget(CoordinatorLayout::class.java); reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false) }
     private fun saveFolderUri(uri: Uri) { requireContext().getSharedPreferences("video_prefs", Context.MODE_PRIVATE).edit { putString(PREF_SELECTED_FOLDER_URI, uri.toString()) } }
     private fun loadSavedFolderUri(): Uri? = requireContext().getSharedPreferences("video_prefs", Context.MODE_PRIVATE).getString(PREF_SELECTED_FOLDER_URI, null)?.toUri()
+    enum class Mpeg4Quality(
+        val label: String,
+        val description: String,
+        val args: String
+    ) {
+        LOW("Baja", "Compartir por WhatsApp, pruebas rápidas", "-q:v 5"),
+        MEDIUM("Media", "Balance tamaño/calidad, redes sociales", "-b:v 2M"),
+        HIGH("Alta (recomendada)", "Ver en tele, uso general", "-b:v 6M"),
+        VERY_HIGH("Muy alta", "Archivo personal, máxima calidad", "-b:v 12M"),
+        MAX("Máxima", "Forzar calidad máxima sin límite de bitrate", "-q:v 1")
+    }
+
+    private fun getSelectedMpeg4Quality(): Mpeg4Quality {
+        val saved = requireContext()
+            .getSharedPreferences("video_prefs", Context.MODE_PRIVATE)
+            .getString(PREF_MPEG4_QUALITY, Mpeg4Quality.HIGH.name)
+        return try {
+            Mpeg4Quality.valueOf(saved ?: Mpeg4Quality.HIGH.name)
+        } catch (e: Exception) {
+            Mpeg4Quality.HIGH
+        }
+    }
+
+    private fun saveSelectedMpeg4Quality(quality: Mpeg4Quality) {
+        requireContext()
+            .getSharedPreferences("video_prefs", Context.MODE_PRIVATE)
+            .edit { putString(PREF_MPEG4_QUALITY, quality.name) }
+    }
+
+    private fun mostrarSelectorCalidadMpeg4() {
+        val calidades = Mpeg4Quality.values()
+        val actual = getSelectedMpeg4Quality()
+        val labels = calidades.map { q ->
+            val check = if (q == actual) "✓ " else "   "
+            "$check${q.label}\n      ${q.description}  →  ${q.args}"
+        }.toTypedArray()
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Calidad de codificación (mpeg4)")
+            .setItems(labels) { _, which ->
+                val elegida = calidades[which]
+                saveSelectedMpeg4Quality(elegida)
+                Toast.makeText(
+                    requireContext(),
+                    "Calidad: ${elegida.label}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            .setNeutralButton("Cerrar", null)
+            .show()
+    }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig);
         val isLandscape = newConfig.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val visibility = if (isLandscape) View.GONE else View.VISIBLE
-
-        // Recalcular el padding derecho de la timeline para el nuevo ancho de pantalla
-        // (el padding derecho es lo que permite scrollear hasta que el último frame
-        // llegue al indicador fijo de la izquierda).
-        if (binding.homeContent.hsvFilmstrip.visibility == View.VISIBLE) {
-            binding.homeContent.hsvFilmstrip.setPadding(0, 0, resources.displayMetrics.widthPixels, 0)
-        }
 
         binding.appBarLayout.visibility = visibility
         val playbackVisibility = if (isLandscape && !isFullscreen) View.GONE else View.VISIBLE; binding.homeContent.videoSeekBar.visibility = playbackVisibility; binding.homeContent.btnPrevVideo.parent.let { if (it is View) it.visibility = playbackVisibility }; binding.homeContent.tvCurrentTime.parent.let { if (it is View) it.visibility = playbackVisibility }
@@ -2277,42 +2010,32 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
         Log.d("parseLrc", "Subtítulos LRC cargados: ${subtitleList.size}")
     }
     private fun hardcodearSubtitulosAss() {
-        if (videoPlaylist.isEmpty() || subtitleList.isEmpty()) {
-            Toast.makeText(requireContext(), R.string.selecciona_video_y_srt, Toast.LENGTH_SHORT).show()
+        if (videoPlaylist.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.carga_video_primero, Toast.LENGTH_SHORT).show()
             return
         }
-        Toast.makeText(requireContext(), R.string.incrustando_subtitulos_msg, Toast.LENGTH_LONG).show()
         val videoUri = videoPlaylist[currentIndex]
-        val duration = getMediaDuration(videoUri)
-        mostrarProgreso(duration)
 
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            val originalName = requireContext().contentResolver.query(videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
-            val fileName = "${originalName.substringBeforeLast(".")}_ass.mp4"
-
-            val videoFile = cacheUriToFile(videoUri, "input_ass.mp4")
-            val subFile = buildAssFromSubtitleList(videoUri)
-            val outputFile = File(requireContext().cacheDir, "output_ass.mp4")
-            if (outputFile.exists()) outputFile.delete()
-
-            val vFilter = "subtitles=${subFile.absolutePath}:fontsdir=${getFontDir().absolutePath}"
-            val command = "-y -i \"${videoFile.absolutePath}\" -vf $vFilter " +
-                    "-c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -c:a copy \"${outputFile.absolutePath}\""
-
-            FFmpegKit.executeAsync(command, { session ->
-                Log.d("FFmpegAssSubs", session.allLogsAsString)
-                if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
-                    saveToDownloads(outputFile, fileName)
-                } else {
-                    Log.e("FFmpegAssSubs", session.allLogsAsString)
+        // Preferimos SIEMPRE el .ass original si el usuario cargó uno con SUBS.
+        // Eso preserva estilos, colores, posiciones y el banner MTV.
+        // Si no hay .ass pero sí subtitleList (de SRT/LRC), regeneramos como antes.
+        val assFile: File = when {
+            selectedAssSubtitleUri != null -> {
+                val safeAss = File(requireContext().cacheDir, "original_${System.currentTimeMillis()}.ass")
+                requireContext().contentResolver.openInputStream(selectedAssSubtitleUri!!)?.use { input ->
+                    safeAss.outputStream().use { out -> input.copyTo(out) }
                 }
-                ocultarProgreso()
-                videoFile.delete()
-                subFile.delete()
-                if (outputFile.exists()) outputFile.delete()
-            }, { stats -> actualizarProgreso(stats.time, duration) })
+                safeAss
+            }
+            subtitleList.isNotEmpty() -> buildAssFromSubtitleList(videoUri)
+            else -> {
+                Toast.makeText(requireContext(), "No hay subtítulos cargados", Toast.LENGTH_SHORT).show()
+                return
+            }
         }
+
+        Toast.makeText(requireContext(), R.string.incrustando_subtitulos_msg, Toast.LENGTH_LONG).show()
+        editorViewModel.burnAssSubtitles(videoUri, assFile, getFontDir(), getSelectedMpeg4Quality().args)
     }
 
     private fun startStampingSession() {
@@ -2377,62 +2100,14 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
     }
 
     private fun crearVideoDesdeFotos(uris: List<Uri>, durationsMs: List<Long>? = null, audioUri: Uri? = null) {
-        val effectiveDurations = if (durationsMs != null && durationsMs.size == uris.size) durationsMs else List(uris.size) { 3000L }
-
         Toast.makeText(requireContext(), getString(R.string.creando_slideshow_msg, uris.size), Toast.LENGTH_LONG).show()
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val carpetaTemp = File(requireContext().cacheDir, "slideshow_${System.currentTimeMillis()}").apply { mkdirs() }
-                uris.forEachIndexed { index, uri ->
-                    val destino = File(carpetaTemp, "img%03d.jpg".format(index))
-                    requireContext().contentResolver.openInputStream(uri)?.use { input -> FileOutputStream(destino).use { output -> input.copyTo(output) } }
-                }
-
-                val fileName = "Slideshow_${System.currentTimeMillis()}.mp4"
-                val outputFile = File(requireContext().cacheDir, "output_slideshow.mp4")
-                if (outputFile.exists()) outputFile.delete()
-
-                val inputArgs = StringBuilder()
-                val filterComplex = StringBuilder()
-                uris.forEachIndexed { index, _ ->
-                    val imgPath = File(carpetaTemp, "img%03d.jpg".format(index)).absolutePath
-                    val durSec = effectiveDurations[index] / 1000.0
-                    inputArgs.append("-loop 1 -t $durSec -i $imgPath ")
-                    filterComplex.append("[$index:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,fps=30[v$index];")
-                }
-                for (index in uris.indices) filterComplex.append("[v$index]")
-                filterComplex.append("concat=n=${uris.size}:v=1:a=0[outv]")
-
-                val filterScriptFile = File(requireContext().cacheDir, "slideshow_filter.txt").apply { writeText(filterComplex.toString()) }
-                val totalDuration = effectiveDurations.sum()
-                requireActivity().runOnUiThread { mostrarProgreso(totalDuration) }
-
-                // Si hay audio de referencia, se mux-ea al resultado final
-                val audioFile = audioUri?.let { cacheUriToFile(it, "slideshow_audio.tmp") }
-
-                val command = if (audioFile != null) {
-                    "-y $inputArgs-i \"${audioFile.absolutePath}\" -filter_complex_script \"${filterScriptFile.absolutePath}\" -map [outv] -map ${uris.size}:a -c:v mpeg4 -q:v 3 -c:a aac -shortest \"${outputFile.absolutePath}\""
-                } else {
-                    "-y $inputArgs-filter_complex_script \"${filterScriptFile.absolutePath}\" -map [outv] -c:v mpeg4 -q:v 3 \"${outputFile.absolutePath}\""
-                }
-
-                FFmpegKit.executeAsync(command, { session ->
-                    if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
-                        saveToDownloads(outputFile, fileName)
-                    } else {
-                        Log.e("FFmpegSlideshow", session.allLogsAsString)
-                    }
-                    ocultarProgreso()
-                    carpetaTemp.deleteRecursively()
-                    filterScriptFile.delete()
-                    audioFile?.delete()
-                    if (outputFile.exists()) outputFile.delete()
-                }, { stats -> actualizarProgreso(stats.time, totalDuration) })
-            } catch (e: Exception) {
-                Log.e("FFmpegSlideshow", "Error: ${e.message}")
-                ocultarProgreso()
-            }
-        }
+        editorViewModel.createSlideshow(uris.toList(), durationsMs?.toList(), audioUri,getSelectedMpeg4Quality().args)
+        // Limpieza de estado de la herramienta (punto 3 de las notas)
+        slideshowImages.clear()
+        slideshowImageDurations.clear()
+        slideshowStampTimestamps.clear()
+        slideshowAudioUri = null
+        binding.homeContent.rvFilmstrip.visibility = View.GONE
     }
 
     private fun splitVideo(videoUri: Uri, startTime: String, endTime: String) {
@@ -2529,77 +2204,14 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             Toast.makeText(requireContext(), "No seleccionaste pistas adicionales", Toast.LENGTH_SHORT).show()
             return
         }
-
         val videoUri = videoPlaylist[currentIndex]
-        val duration = getMediaDuration(videoUri)
-        mostrarProgreso(duration)
-
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val inputFiles = mutableListOf<File>()
-                val command = StringBuilder("-y ")
-
-                // 1. Video Input (index 0)
-                val videoFile = cacheUriToFile(videoUri, "mplex_video.mp4")
-                inputFiles.add(videoFile)
-                command.append("-i \"${videoFile.absolutePath}\" ")
-
-                // 2. Audio Inputs
-                multiplexAudioUris.forEachIndexed { i, uri ->
-                    val aFile = cacheUriToFile(uri, "mplex_audio_$i.tmp")
-                    inputFiles.add(aFile)
-                    command.append("-i \"${aFile.absolutePath}\" ")
-                }
-
-                // 3. Subtitle Inputs
-                multiplexSubtitleUris.forEachIndexed { i, uri ->
-                    val ext = getFileExtension(uri)
-                    val sFile = cacheUriToFile(uri, "mplex_sub_$i.$ext")
-                    inputFiles.add(sFile)
-                    command.append("-i \"${sFile.absolutePath}\" ")
-                }
-
-                // 4. Mapping
-                command.append("-map 0:v ") // Video original
-                // Si agregamos audios, ignoramos el audio original del video (opcional, pero suele ser lo deseado en Multiplex)
-                // O podemos mantenerlo como primera pista. Vamos a mantener el original + los nuevos.
-                command.append("-map 0:a? ")
-
-                var currentInputIndex = 1
-                repeat(multiplexAudioUris.size) {
-                    command.append("-map ${currentInputIndex}:a ")
-                    currentInputIndex++
-                }
-                repeat(multiplexSubtitleUris.size) {
-                    command.append("-map ${currentInputIndex}:s ")
-                    currentInputIndex++
-                }
-
-                // 5. Output settings
-                val outputFile = File(requireContext().cacheDir, "mplex_output.mkv")
-                if (outputFile.exists()) outputFile.delete()
-
-                command.append("-c copy -c:s srt \"${outputFile.absolutePath}\"")
-
-                Log.d("FFmpegMultiplex", "Comando: $command")
-
-                FFmpegKit.executeAsync(command.toString(), { session ->
-                    if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists()) {
-                        val fileName = "Multiplex_${System.currentTimeMillis()}.mkv"
-                        saveToDownloads(outputFile, fileName, "video/x-matroska")
-                    } else {
-                        Log.e("FFmpegMultiplex", session.allLogsAsString)
-                    }
-                    ocultarProgreso()
-                    inputFiles.forEach { it.delete() }
-                    if (outputFile.exists()) outputFile.delete()
-                }, { stats -> actualizarProgreso(stats.time, duration) })
-
-            } catch (e: Exception) {
-                Log.e("FFmpegMultiplex", "Error: ${e.message}")
-                ocultarProgreso()
-            }
-        }
+        editorViewModel.generateMultiplexMKV(
+            videoUri,
+            multiplexAudioUris.toList(),
+            multiplexSubtitleUris.toList()
+        )
+        multiplexAudioUris.clear()
+        multiplexSubtitleUris.clear()
     }
 
     private fun startProductionFlow() {
@@ -2642,85 +2254,11 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
 
     private fun executeFinalProduction(videoUri: Uri, audioUri: Uri?, subtitleUri: Uri?) {
         Toast.makeText(requireContext(), "Generando producción final...", Toast.LENGTH_LONG).show()
-        val duration = getMediaDuration(videoUri)
-        mostrarProgreso(duration)
-
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val originalName = requireContext().contentResolver.query(
-                    videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
-                )?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
-                val baseName = originalName.substringBeforeLast(".")
-                val fileName = "${baseName}_Produccion.mp4"
-
-                val videoFile = cacheUriToFile(videoUri, "prod_video.mp4")
-
-                val isSilence = audioUri != null && audioUri.toString() == "silence"
-                val audioFile = if (audioUri != null && !isSilence) {
-                    cacheUriToFile(audioUri, "prod_audio.tmp")
-                } else null
-
-                val subFile = subtitleUri?.let {
-                    val ext = getFileExtension(it).ifBlank { "srt" }
-                    cacheUriToFile(it, "prod_sub.$ext")
-                }
-
-                val outputFile = File(requireContext().cacheDir, "prod_output.mp4")
-                if (outputFile.exists()) outputFile.delete()
-
-                val command = StringBuilder("-y -i \"${videoFile.absolutePath}\" ")
-                if (audioFile != null) {
-                    command.append("-i \"${audioFile.absolutePath}\" ")
-                }
-
-                // Filtro de video: solo si hay subtítulos para quemar
-                val vFilter = subFile?.let {
-                    val escapedPath = it.absolutePath.replace(":", "\\:")
-                    "subtitles=$escapedPath:fontsdir=${getFontDir().absolutePath}"
-                }
-                if (vFilter != null) {
-                    command.append("-vf \"$vFilter\" ")
-                }
-
-                // Mapeo y códec de audio según el caso
-                when {
-                    isSilence -> command.append("-map 0:v -an ")
-                    audioFile != null -> command.append("-map 0:v -map 1:a -c:a aac -shortest ")
-                    else -> command.append("-map 0:v -map 0:a? -c:a copy ")
-                }
-
-                // Códec de video: si quemamos subs hay que reencodear, si no, copiar
-                if (vFilter != null) {
-                    command.append("-c:v h264_mediacodec -b:v 2M ")
-                } else {
-                    command.append("-c:v copy ")
-                }
-
-                command.append("\"${outputFile.absolutePath}\"")
-
-                Log.d("FFmpegProduction", "Comando: $command")
-
-                FFmpegKit.executeAsync(command.toString(), { session ->
-                    if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
-                        saveToDownloads(outputFile, fileName)
-                    } else {
-                        Log.e("FFmpegProduction", session.allLogsAsString)
-                        requireActivity().runOnUiThread {
-                            Toast.makeText(requireContext(), "Error al generar la producción final", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    ocultarProgreso()
-                    videoFile.delete()
-                    audioFile?.delete()
-                    subFile?.delete()
-                    if (outputFile.exists()) outputFile.delete()
-                }, { stats -> actualizarProgreso(stats.time, duration) })
-
-            } catch (e: Exception) {
-                Log.e("FFmpegProduction", "Error: ${e.message}")
-                ocultarProgreso()
-            }
-        }
+        // Traducir el sentinel "silence" al URI pactado con el VM
+        val normalizedAudioUri = if (audioUri != null && audioUri.toString() == "silence") {
+            Uri.parse(HomeEditorViewModel.SILENCE_URI)
+        } else audioUri
+        editorViewModel.finalProduction(videoUri, normalizedAudioUri, subtitleUri, getFontDir(), getSelectedMpeg4Quality().args)
     }
     private fun startDemuxFlow() {
         if (videoPlaylist.isEmpty()) {
@@ -2752,60 +2290,8 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             Toast.makeText(requireContext(), "No seleccionaste nada para extraer", Toast.LENGTH_SHORT).show()
             return
         }
-
         val videoUri = videoPlaylist[currentIndex]
-        val duration = getMediaDuration(videoUri)
-        mostrarProgreso(duration)
-
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val videoFile = cacheUriToFile(videoUri, "demux_input.mp4")
-                val (audioStreams, subStreams) = detectarStreams(videoFile)
-                val originalName = requireContext().contentResolver.query(videoUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                    ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Video_${System.currentTimeMillis()}"
-                val baseName = originalName.substringBeforeLast(".")
-
-                if (audio) {
-                    if (audioStreams.isEmpty()) {
-                        Log.w("Demux", "No se detectaron streams de audio. Log crudo arriba (tag Demux) para diagnosticar.")
-                        requireActivity().runOnUiThread {
-                            Toast.makeText(requireContext(), "No se encontraron audios (revisa Logcat tag 'Demux' para el detalle)", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                    audioStreams.forEach { streamIdx ->
-                        val outName = "${baseName}_track_${streamIdx}.mp3"
-                        val outFile = File(requireContext().cacheDir, outName)
-                        val cmd = "-y -i \"${videoFile.absolutePath}\" -map 0:$streamIdx -c:a libmp3lame -q:a 2 \"${outFile.absolutePath}\""
-                        val extractSession = FFmpegKit.execute(cmd)
-                        if (!ReturnCode.isSuccess(extractSession.returnCode)) {
-                            Log.e("Demux", "Falló extrayendo audio stream $streamIdx: ${extractSession.allLogsAsString}")
-                        }
-                        if (outFile.exists() && outFile.length() > 0) saveToDownloads(outFile, outName, "audio/mpeg")
-                        outFile.delete()
-                    }
-                }
-
-                if (subs) {
-                    if (subStreams.isEmpty()) {
-                        requireActivity().runOnUiThread { Toast.makeText(requireContext(), "No se encontraron subtítulos", Toast.LENGTH_SHORT).show() }
-                    }
-                    subStreams.forEach { streamIdx ->
-                        val outName = "${baseName}_sub_${streamIdx}.srt"
-                        val outFile = File(requireContext().cacheDir, outName)
-                        val cmd = "-y -i \"${videoFile.absolutePath}\" -map 0:$streamIdx \"${outFile.absolutePath}\""
-                        FFmpegKit.execute(cmd)
-                        if (outFile.exists() && outFile.length() > 0) saveToDownloads(outFile, outName, "text/plain")
-                        outFile.delete()
-                    }
-                }
-
-                ocultarProgreso()
-                videoFile.delete()
-            } catch (e: Exception) {
-                Log.e("Demux", "Error: ${e.message}")
-                ocultarProgreso()
-            }
-        }
+        editorViewModel.demux(videoUri, audio, subs)
     }
 
     private fun actualizarVisibilidadSelectorPistas() {
@@ -2869,88 +2355,11 @@ class HomeFragment : AbsMainActivityFragment(R.layout.fragment_home), IScrollHel
             }
             .show()
     }
-
-    private fun detectarCodecPortada(inputFile: File): String? {
-        // FFprobeKit no está disponible en este build (ClassNotFoundException:
-        // com.arthenica.ffmpegkit.FFprobeKit) — probablemente el APK no incluye
-        // ese módulo por separado, o quedó desincronizado por un build
-        // incremental. En vez de depender de él, usamos FFmpegKit puro: al
-        // pedirle solo "-i archivo" sin indicar salida, ffmpeg igual imprime la
-        // info completa de todos los streams (incluido el de video/portada
-        // embebida) en su log, justo antes de fallar por "At least one output
-        // file must be specified". Ese log es lo único que necesitamos.
-        val session = com.arthenica.ffmpegkit.FFmpegKit.execute(
-            "-i \"${inputFile.absolutePath}\""
-        )
-        val log = session.allLogsAsString ?: return null
-
-        // Busca una línea tipo: "Stream #0:1: Video: mjpeg, ..." o "Video: png, ..."
-        val regex = Regex("""Stream #\d+:\d+.*?: Video: (\w+)""")
-        val match = regex.find(log) ?: return null
-        return match.groupValues[1].trim()
-    }
-
     private fun convertirAudiosAMp3(uris: List<Uri>, calidad: Int = 2) {
-        Toast.makeText(requireContext(), "Iniciando conversión masiva...", Toast.LENGTH_LONG).show(); val totalUris = uris.size
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            var exitosos = 0; var fallidos = 0
-            var primerError: String? = null
-            uris.forEachIndexed { index, uri ->
-                val originalName = requireContext().contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Audio_${System.currentTimeMillis()}_$index"
-                val fileName = "${originalName.substringBeforeLast(".")}.mp3"; val inputFile = cacheUriToFile(uri, "temp_input_audio_$index.tmp")
-                if (!inputFile.exists() || inputFile.length() == 0L) {
-                    fallidos++
-                    if (primerError == null) primerError = "$originalName: no se pudo leer el archivo de origen (0 bytes o no existe)"
-                    return@forEachIndexed
-                }
-                val outputFile = File(requireContext().cacheDir, "output_temp_$index.mp3"); if (outputFile.exists()) outputFile.delete()
-                val duration = getMediaDuration(uri); requireActivity().runOnUiThread { mostrarProgreso(duration); _binding?.homeContent?.tvSubtitleOverlay?.text = "Convirtiendo ($index/$totalUris): ${originalName.substringBeforeLast(".")}" }
-
-                // Detectamos el códec de la portada embebida (si hay) para decidir si
-                // se puede copiar tal cual o si hay que reencodearla a un formato que
-                // ID3v2/APIC soporte (jpg o png). Esto evita el bug de inflado por PNG
-                // sin comprimir Y el caso de formatos no soportados (webp, etc).
-                val codecPortada = detectarCodecPortada(inputFile)
-                val tieneVideoStream = !codecPortada.isNullOrBlank()
-                val filtroVideo = when {
-                    !tieneVideoStream -> ""
-                    codecPortada == "mjpeg" || codecPortada == "png" -> "-c:v copy"
-                    else -> "-c:v mjpeg" // webp u otro formato no soportado por APIC -> reencode
-                }
-                val mapVideo = if (tieneVideoStream) "-map 0:v?" else ""
-                val dispositionFlag = if (tieneVideoStream) "-disposition:v attached_pic" else ""
-
-                val command = "-y -i \"${inputFile.absolutePath}\" " +
-                        "-map_metadata 0 -map 0:a $mapVideo " +
-                        "-c:a libmp3lame -q:a $calidad $filtroVideo $dispositionFlag " +
-                        "-id3v2_version 3 \"${outputFile.absolutePath}\""
-
-                val session = FFmpegKit.execute(command) { stats -> actualizarProgreso(stats.time, duration) }
-                if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0) {
-                    saveToDownloads(outputFile, fileName, "audio/mpeg"); exitosos++
-                } else {
-                    fallidos++
-                    // Antes esto se perdía en silencio. Logueamos el log completo de
-                    // FFmpeg (logcat, tag "ConvertirMp3") y guardamos el primer error
-                    // para mostrarlo en el Toast final -- así "X fallidos" deja de ser
-                    // una caja negra.
-                    val logCompleto = session.allLogsAsString
-                    Log.e("ConvertirMp3", "Falló convirtiendo $originalName (returnCode=${session.returnCode}):\n$logCompleto")
-                    if (primerError == null) {
-                        val ultimaLinea = logCompleto?.trim()?.lines()?.lastOrNull { it.isNotBlank() }
-                        primerError = "$originalName: ${ultimaLinea ?: "returnCode=${session.returnCode}"}"
-                    }
-                }
-                inputFile.delete(); outputFile.delete()
-            }
-            requireActivity().runOnUiThread {
-                ocultarProgreso()
-                val base = "Conversión: $exitosos ok, $fallidos fallidos"
-                val mensaje = if (fallidos > 0 && primerError != null) "$base\nPrimer error: $primerError" else base
-                Toast.makeText(requireContext(), mensaje, Toast.LENGTH_LONG).show()
-            }
-        }
+        Toast.makeText(requireContext(), "Iniciando conversión masiva...", Toast.LENGTH_LONG).show()
+        editorViewModel.convertAudiosToMp3(uris.toList(), calidad)
+        selectedAudioUris.clear()
     }
 
-    companion object { const val PREF_SELECTED_FOLDER_URI = "pref_selected_folder_uri"; const val TAG: String = "BannerHomeFragment"; @JvmStatic fun newInstance(): HomeFragment = HomeFragment() }
+    companion object { const val PREF_SELECTED_FOLDER_URI = "pref_selected_folder_uri"; const val PREF_MPEG4_QUALITY = "pref_mpeg4_quality"; const val TAG: String = "BannerHomeFragment"; @JvmStatic fun newInstance(): HomeFragment = HomeFragment() }
 }
